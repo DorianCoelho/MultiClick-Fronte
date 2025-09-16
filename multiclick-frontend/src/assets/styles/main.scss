@@ -1,0 +1,16 @@
+@use 'variables' as *;
+
+// Importa Bootstrap usando las variables override de arriba
+@import "bootstrap/scss/bootstrap";
+
+// Tus estilos globales
+body {
+  background-color: #f7f8fa;
+}
+.auth-card {
+  max-width: 420px;
+  margin: 6rem auto;
+}
+.btn-primary{
+    color: #fff !important;
+}
