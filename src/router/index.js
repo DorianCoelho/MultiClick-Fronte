@@ -9,6 +9,10 @@ import Suggestions from '@/pages/Suggestions.vue'
 import Grafico from '@/pages/Grafico.vue'
 import ResetPassword from '@/pages/ResetPassword.vue'
 import Cups from '@/pages/Cups.vue'
+import ProposalDetails from '@/pages/ProposalDetails.vue'
+import ProposalDetailsMulti from '@/pages/ProposalDetailsMulti.vue'
+import Contracts from '@/pages/Contracts.vue'
+import Proposals from '@/pages/Proposals.vue'
 
 // Define rutas y marca cuáles requieren auth
 const routes = [
@@ -22,9 +26,13 @@ const routes = [
   // Protegidas
   { path: '/dashboard', name: 'dashboard', component: Dashboard, meta: { requiresAuth: true } },
   { path: '/suggestions', name: 'suggestions', component: Suggestions, meta: { requiresAuth: true } },
+  { path: '/proposals', name: 'proposals', component: Proposals, meta: { requiresAuth: true } },
   { path: '/grafico', name: 'grafico', component: Grafico, meta: { requiresAuth: true } },
   { path: '/restablecer-password', name: 'ResetPassword', component: ResetPassword, meta: { requiresAuth: true } },
   { path: '/cups', name: 'Cups', component: Cups, meta: { requiresAuth: true } },
+  { path: '/proposals/:proposalId',  name: 'ProposalDetails',  component: ProposalDetails,  meta: { requiresAuth: true } },
+  { path: '/proposals-multi/:proposalId',  name: 'ProposalDetailsMulti',  component: ProposalDetailsMulti,  meta: { requiresAuth: true } },
+  { path: '/contracts', name: 'Contracts', component: Contracts, meta: { requiresAuth: true } },
 
 
   // 404 → a login (o crea una página 404 si prefieres)

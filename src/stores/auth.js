@@ -16,6 +16,7 @@ export const useAuthStore = defineStore('auth', {
       const { data } = await api.post('/auth/login', credentials)
       this.token = data.token
       this.user = data.user ?? null
+      console.log("data.user", data.user)
       this.isFirstLogin = !!(data.user?.isFirstLogin ?? data.user?.IsFirstLogin)
       localStorage.setItem('token', this.token)
       localStorage.setItem('user', JSON.stringify(this.user))
