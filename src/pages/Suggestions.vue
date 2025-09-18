@@ -56,6 +56,15 @@ function toOrderByParam(by, dir) {
 }
 
 /* Helpers */
+function isDocType(row, type) {
+  return String(row?.multiClickDocumentType || '').toLowerCase() === String(type || '').toLowerCase()
+}
+function rowClass(row) {
+  return {
+    'row-propuesta': isDocType(row, 'Propuesta'),
+    'row-contrato':  isDocType(row, 'Contrato'),
+  }
+}
 function fmtDate(iso) {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -329,7 +338,7 @@ onMounted(() => window.addEventListener('keydown', onKey))
               </tr>
             </thead>
             <tbody>
-              <tr v-for="r in rows" :key="r.contractNo + '|' + r.cups">
+              <tr v-for="r in rows" :key="r.contractNo + '|' + r.cups" :class="rowClass(r)">
                 <td class="mono">
                   {{ r.contractNo }}
                   <small class="muted d-block">{{ r.multiClickDocumentType }} · {{ r.multiClickDocumentNo }}</small>
@@ -767,5 +776,31 @@ onMounted(() => window.addEventListener('keydown', onKey))
 }
 /* Opcional: centra verticalmente el contenido de todas las celdas */
 .table td { vertical-align: middle; }
+/* Colores por tipo de documento */
+.table tbody tr.row-propuesta {
+  background: #f0f9ff;            /* azul muy suave */
+  border-left: 4px solid #38bdf8; /* cian */
+}
+.table tbody tr.row-propuesta td {
+  /* color ligeramente más oscuro para mejor contraste */
+  color: #1e3a8a;
+}
+
+.table tbody tr.row-contrato {
+  background: #f0fdf4;            /* verde muy suave */
+  border-left: 4px solid #34d399; /* verde */
+}
+.table tbody tr.row-contrato td {
+  /* color ligeramente más oscuro para mejor contraste */
+  color: #166534;
+}
+
+/* Si quieres que se note incluso al pasar el ratón */
+.table tbody tr.row-propuesta:hover {
+  background: #e0f2fe;
+}
+.table tbody tr.row-contrato:hover {
+  background: #dcfce7;
+}
 
 </style>

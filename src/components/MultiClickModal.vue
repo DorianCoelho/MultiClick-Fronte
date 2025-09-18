@@ -158,7 +158,7 @@ function onRemove(key) { emit('remove', key) }
         <div class="mc-body">
           <!-- Tabla puntos -->
           <div class="mb-3">
-            <h6 class="mb-2">Puntos (OMIP Base)</h6>
+            <h6 class="mb-2">Punto (OMIP Base)</h6>
             <div class="table-responsive">
               <table class="table table-sm align-middle mb-0">
                 <thead>
@@ -181,12 +181,12 @@ function onRemove(key) { emit('remove', key) }
                     </td>
                   </tr>
                   <tr v-if="!points.length">
-                    <td colspan="4" class="text-center text-muted">Sin puntos seleccionados</td>
+                    <td colspan="4" class="text-center text-muted">Sin punto seleccionado</td>
                   </tr>
                 </tbody>
               </table>
             </div>
-            <small class="text-muted">Máximo 1 puntos.</small>
+            <small class="text-muted">Máximo 1 punto.</small>
           </div>
 
           <hr class="my-3" />
