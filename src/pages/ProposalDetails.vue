@@ -126,8 +126,8 @@
               </table>
             </div>
 
-            <h6 class="subsec mt-sm">FEE ENERGÍA</h6>
-            <div class="table-scroll">
+            <h6 v-if="p.productType === 'Omip'" class="subsec mt-sm">FEE ENERGÍA</h6>
+            <div v-if="p.productType === 'Omip'" class="table-scroll">
               <table class="table">
                 <thead>
                   <tr>

@@ -80,7 +80,7 @@ onMounted(loadCups)
                 <td><code>{{ c }}</code></td>
                 <td class="text-end">
                   <button class="btn btn-primary btn-sm" @click="crearSugerencia(c)">
-                    Crear sugerencia
+                    Crear click
                   </button>
                 </td>
               </tr>

@@ -510,7 +510,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <button class="btn btn-primary" :disabled="!canSend" @click="openModal">Enviar</button>
+      <button class="btn btn-primary" :disabled="!canSend" @click="openModal">Crear click</button>
     </div>
 
     <div class="card">
