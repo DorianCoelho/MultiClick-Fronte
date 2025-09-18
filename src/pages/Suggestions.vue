@@ -59,10 +59,18 @@ function toOrderByParam(by, dir) {
 function isDocType(row, type) {
   return String(row?.multiClickDocumentType || '').toLowerCase() === String(type || '').toLowerCase()
 }
+function isSegestion(row, type) {
+  return String(row?.status || '').toLowerCase() === String(type || '').toLowerCase()
+}
 function rowClass(row) {
   return {
     'row-propuesta': isDocType(row, 'Propuesta'),
     'row-contrato':  isDocType(row, 'Contrato'),
+  }
+}
+function statusRowClass(row) {
+  return {
+    'row-status-sugerido': isSegestion(row, 'Sugerido'),
   }
 }
 function fmtDate(iso) {
@@ -167,6 +175,7 @@ async function approve(row) {
   try {
     await api.get('/v1/MultiClick/UpdateMultiClickEnergyContractAsync', {
       params: {
+        multiclickDocumentType: row.multiClickDocumentType,
         customerNo: row.customerNo,
         contractNo: row.contractNo,
         cups: row.cups
@@ -365,7 +374,7 @@ onMounted(() => window.addEventListener('keydown', onKey))
                       </svg>
                     </button>
 
-                    <button class="btn-ghost btn-ghost-custom"
+                    <button class="btn-ghost btn-ghost-custom" :class="statusRowClass(r)"
                       :disabled="!isSugerido(r.status) || approving.has(r.customerNo + '|' + r.contractNo + '|' + r.cups)"
                       @click="approve(r)"
                       :title="isSugerido(r.status) ? 'Aprobar' : 'Solo disponible si el estado es Sugerido'">
@@ -802,5 +811,15 @@ onMounted(() => window.addEventListener('keydown', onKey))
 .table tbody tr.row-contrato:hover {
   background: #dcfce7;
 }
+.row-status-sugerido {
+  border-left: 1px solid #e5e7eb;
+  color: #374151;
+}
+.row-status-sugerido:hover {
+  background: #fef3c7;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+}
+
 
 </style>
