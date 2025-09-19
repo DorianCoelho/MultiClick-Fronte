@@ -261,6 +261,11 @@ function showToast (text, type = 'success', ms = 2400) {
  *    - Si ya hay aceptaciones => NO mostramos modal.
  * 2) Si vacío o error => GET /GetEnergyProducts y mostramos modal.
  */
+async function getPublicIP() {
+  const { ip } = await fetch('https://api.ipify.org?format=json').then(r => r.json());
+  return ip;
+}
+
 async function maybeShowFirstLoginModal () {
 
 
@@ -291,12 +296,13 @@ async function maybeShowFirstLoginModal () {
 
 /* POST de aceptación */
 async function acceptEnergyProduct () {
+  const ip = await getPublicIP();
   try {
     const payload = {
       userName: getUserName(),
       productNo: energyProduct.value?.no || energyProduct.value?.No || '',
       acceptanceDate: new Date().toISOString(),
-      acceptanceIPAddress: '' // si el backend la sobreescribe, lo dejamos vacío
+      acceptanceIPAddress: ip
     }
     await api.post('/UserAcceptedProducts', payload)
 

@@ -1,6 +1,10 @@
 <script setup>
-import { ref, watch, computed, nextTick } from 'vue'
+import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue'
 import api from '@/services/api'
+
+const isSubmitting = ref(false)
+let submitTimerId = null
+const LOCK_MS = 1000
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -42,7 +46,7 @@ const canSubmit = computed(() => {
   if (!props.customerNo) { formError.value = 'Falta el CustomerId.'; return false }
   if (!cups.value) { formError.value = 'Selecciona un CUPS.'; return false }
   if (!['Q', 'S', 'Y'].includes(periodType.value)) { formError.value = 'Selecciona un período cubierto.'; return false }
-  
+
   const price = parseNumLike(fixedPrice.value)
   if (price == null || price <= 0) { formError.value = 'Indica un precio válido.'; return false }
   if (!props.points.length) { formError.value = 'No hay puntos seleccionados.'; return false }
@@ -62,7 +66,7 @@ async function loadCups() {
     const { data } = await api.get('/v1/ContractCliente/LastContractIndex', {
       params: { customerNo: String(props.customerNo), marketer: MARKETER }
     })
-    
+
 
     if (!data) {
       loadError.value = 'El cliente no tiene contrato Index activo.'
@@ -112,7 +116,11 @@ async function loadCups() {
 /* =============================================================== */
 
 watch(() => props.show, async (v) => {
-  if (!v) return
+  if (!v) {
+    isSubmitting.value = false
+    if (submitTimerId) { clearTimeout(submitTimerId); submitTimerId = null }
+    return
+  }
   periodType.value = ['Q', 'S', 'Y'].includes(props.defaultPeriodType) ? props.defaultPeriodType : 'Q'
   const avg = average((props.points || []).map(p => p?.value))
   fixedPrice.value = avg != null ? String(avg) : ''
@@ -126,8 +134,22 @@ watch(() => props.prefilledCups, (v) => {
   if (!props.show || !v) return
   if (cupsOptions.value.includes(v)) cups.value = v
 })
+function blockSubmit() {
+  if (isSubmitting.value) return
+  isSubmitting.value = true
+
+  onSubmit()
+
+
+  if (submitTimerId) { clearTimeout(submitTimerId); submitTimerId = null }
+  submitTimerId = setTimeout(() => {
+    isSubmitting.value = false
+    submitTimerId = null
+  }, LOCK_MS)
+}
 
 function onSubmit() {
+
   if (!canSubmit.value) return
 
   const payload = {
@@ -141,6 +163,8 @@ function onSubmit() {
   }
 
   emit('submit', payload)
+
+
 }
 function onRemove(key) { emit('remove', key) }
 </script>
@@ -158,7 +182,7 @@ function onRemove(key) { emit('remove', key) }
         <div class="mc-body">
           <!-- Tabla puntos -->
           <div class="mb-3">
-            <h6 class="mb-2">Click (OMIP Base)</h6>
+            <h6 class="mb-2">Punto (OMIP Base)</h6>
             <div class="table-responsive">
               <table class="table table-sm align-middle mb-0">
                 <thead>
@@ -181,12 +205,12 @@ function onRemove(key) { emit('remove', key) }
                     </td>
                   </tr>
                   <tr v-if="!points.length">
-                    <td colspan="4" class="text-center text-muted">Sin click seleccionado</td>
+                    <td colspan="4" class="text-center text-muted">Sin punto seleccionado</td>
                   </tr>
                 </tbody>
               </table>
             </div>
-            <small class="text-muted">Máximo 1 click.</small>
+            <small class="text-muted">Máximo 1 punto.</small>
           </div>
 
           <hr class="my-3" />
@@ -206,18 +230,18 @@ function onRemove(key) { emit('remove', key) }
             </div>
           </div>
 
-        
+
           <div class="row g-3 p-3 justify-content-center align-items-center">
             <div class="col-12 col-md-6">
               <h5>Datos del Cliente:</h5>
-                <label class="form-label">Nombre</label>
-                <input class="form-control" type="text" :value="userName"  readonly/>
+              <label class="form-label">Nombre</label>
+              <input class="form-control" type="text" :value="userName" readonly />
             </div>
           </div>
           <div class="row g-3 p-3 justify-content-center align-items-center">
             <div class="col-12 col-md-6">
-                <label class="form-label">DNI/CIF</label>
-                <input class="form-control" type="text" :value="cif" readonly/>
+              <label class="form-label">DNI/CIF</label>
+              <input class="form-control" type="text" :value="cif" readonly />
             </div>
           </div>
           <div class="row g-3 p-3 justify-content-center align-items-center">
@@ -238,7 +262,7 @@ function onRemove(key) { emit('remove', key) }
               <label class="form-label">Precio fijo acordado (OMIP) <span class="text-danger">*</span></label>
               <div class="input-group">
                 <input class="form-control" type="number" inputmode="decimal" step="0.01" min="0" v-model="fixedPrice"
-                  placeholder="Ej. 85.50" readonly/>
+                  placeholder="Ej. 85.50" readonly />
                 <span class="input-group-text">€/MWh</span>
               </div>
               <small class="text-muted">Sugerido: media de los puntos seleccionados.</small>
@@ -253,7 +277,10 @@ function onRemove(key) { emit('remove', key) }
 
         <div class="mc-footer">
           <button class="btn btn-outline-secondary" @click="$emit('close')">Cancelar</button>
-          <button class="btn btn-primary" :disabled="!canSubmit" @click="onSubmit">Aceptar y enviar</button>
+          <button class="btn btn-primary" :disabled="!canSubmit || isSubmitting" @click="blockSubmit">
+            <span v-if="isSubmitting">Enviando…</span>
+            <span v-else>Aceptar y enviar</span>
+          </button>
         </div>
       </div>
     </div>
