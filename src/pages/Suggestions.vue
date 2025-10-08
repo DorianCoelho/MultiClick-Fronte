@@ -375,10 +375,10 @@ onMounted(() => window.addEventListener('keydown', onKey))
                     </button>
 
                     <button class="btn-ghost btn-ghost-custom" :class="statusRowClass(r)"
-                      :disabled="!isSugerido(r.status) || approving.has(r.customerNo + '|' + r.contractNo + '|' + r.cups)"
+                      :disabled="!isSugerido(r.status) || approving.has(`${r.customerNo}|${r.contractNo}|${r.cups}`)"
                       @click="approve(r)"
                       :title="isSugerido(r.status) ? 'Aprobar' : 'Solo disponible si el estado es Sugerido'">
-                      {{ approving.has(r.customerNo + '|' + r.contractNo + '|' + r.cups) ? 'Enviando…' : 'Aprobar' }}
+                      {{ approving.has(`${r.customerNo}|${r.contractNo}|${r.cups}`) ? 'Enviando…' : 'Aprobar' }}
                     </button>
                   </div>
                 </td>

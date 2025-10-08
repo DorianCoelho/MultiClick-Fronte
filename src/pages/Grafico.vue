@@ -22,6 +22,21 @@ const hasLastIndex = ref(false)
 const feeEnergy = ref(0)        // número (0 si no hay)
 const feeLoaded = ref(false)    // para saber si ya preguntamos
 
+/* ===================== MultiClick Contracts ===================== */
+const multiclickRows = ref([])
+const multiclickLoading = ref(false)
+const multiclickError = ref('')
+
+/* ===================== PDF Modal ===================== */
+const showPdf = ref(false)
+const pdfUrl = ref(null)
+const pdfLoading = ref(false)
+const pdfError = ref('')
+const currentPdfId = ref(null)
+
+/* ===================== Aprobar MultiClick ===================== */
+const approving = reactive(new Set())
+
 // ===================== Auth =====================
 const auth = useAuthStore()
 // Ajusta el campo si tu token/usuario lo expone con otro nombre
@@ -311,6 +326,7 @@ const series = ref([
 const colorOmip = '#ff9f43'
 const colorSelected = '#dc3545'
 const colorLow = '#198754'
+const colorUsed = '#9333ea'  // Morado para puntos ya utilizados
 
 function computeLowFive(keys, g) {
   return new Set(
@@ -359,11 +375,36 @@ const chartOptions = ref({
   legend: { show: true, position: 'top', horizontalAlign: 'right', offsetY: 8 }
 })
 
+// Función para verificar si un mes está ocupado por algún contrato
+function isMonthUsed(monthKey) {
+  // monthKey formato: "YYYY-MM"
+  const [year, month] = monthKey.split('-').map(Number)
+  const checkDate = new Date(year, month - 1, 1)
+  
+  // Verificar si este mes está dentro del rango de algún contrato
+  for (const contract of multiclickRows.value) {
+    if (!contract.startDate || !contract.endDate) continue
+    
+    const startDate = new Date(contract.startDate)
+    const endDate = new Date(contract.endDate)
+    
+    // Verificar si checkDate está entre startDate y endDate
+    if (checkDate >= startDate && checkDate <= endDate) {
+      return true
+    }
+  }
+  
+  return false
+}
+
 function buildDiscreteMarkers(keys) {
   const disc = []
   keys.forEach((k, idx) => {
+    // Prioridad: Seleccionado > Bajo 5 > Usado
     if (selectedSet.has(k)) {
       disc.push({ seriesIndex: 0, dataPointIndex: idx, fillColor: colorSelected, strokeColor: colorSelected, size: 8 })
+    } else if (isMonthUsed(k)) {
+      disc.push({ seriesIndex: 0, dataPointIndex: idx, fillColor: colorUsed, strokeColor: colorUsed, size: 8 })
     } else if (lowFiveSet.has(k)) {
       disc.push({ seriesIndex: 0, dataPointIndex: idx, fillColor: colorLow, strokeColor: colorLow, size: 8 })
     }
@@ -468,8 +509,10 @@ async function onSubmitModal(payload) {
     })
 
     if (res.data.success) {
-      showToast(`Contrato creado con éxito Nº ${res.data.contractNo}`, 'success')
+      showToast(`Orden de compra creada con éxito Nº ${res.data.contractNo}`, 'success')
       showModal.value = false
+      // Recargar la lista de contratos
+      await loadMultiClickContracts()
     } else {
       showToast(`Error: ${res.data.error || 'Error desconocido'}`, 'error')
     }
@@ -478,9 +521,185 @@ async function onSubmitModal(payload) {
   }
 }
 
+function handleOverlapError(message) {
+  // Limpiar selección
+  selectedSet.clear()
+  modalPoints.value = []
+  showModal.value = false
+  
+  // Mostrar mensaje de error
+  showToast(message, 'error', 'Error de Solapamiento')
+}
+
+/* ===================== Cargar MultiClick Contracts ===================== */
+async function loadMultiClickContracts() {
+  multiclickError.value = ''
+  multiclickRows.value = []
+  if (!customerNo.value) { multiclickError.value = 'Falta CustomerNo en sesión.'; return }
+
+  multiclickLoading.value = true
+  try {
+    const { data } = await api.get('/v1/MultiClick/GetMultiClickEnergyContract', {
+      params: {
+        customerNo: customerNo.value,
+        pageNumber: 1,
+        pageSize: 50
+      }
+    })
+
+    const items = Array.isArray(data) ? data
+      : Array.isArray(data?.items) ? data.items
+        : Array.isArray(data?.result) ? data.result
+          : []
+    multiclickRows.value = items.map(x => ({
+      contractNo: x.contractNo ?? x.ContractNo,
+      customerNo: x.customerNo ?? x.CustomerNo,
+      refApplicationOperNo: x.refApplicationOperNo ?? x.RefApplicationOperNo,
+      cups: x.cups ?? x.Cups,
+      multiClickDocumentType: x.multiClickDocumentType ?? x.MultiClickDocumentType,
+      multiClickDocumentNo: x.multiClickDocumentNo ?? x.MultiClickDocumentNo,
+      status: x.status ?? x.Status,
+      rateNo: x.rateNo ?? x.RateNo,
+      feeEnergy: Number(x.feeEnergy ?? x.FeeEnergy),
+      selectedPrice: Number(x.selectedPrice ?? x.SelectedPrice),
+      duration: x.duration ?? x.Duration,
+      startDate: x.startDate ?? x.StartDate,
+      endDate: x.endDate ?? x.EndDate,
+      dateTimeCreated: x.dateTimeCreated ?? x.DateTimeCreated,
+      p1: Number(x.p1 ?? x.P1),
+      p2: Number(x.p2 ?? x.P2),
+      p3: Number(x.p3 ?? x.P3),
+      p4: Number(x.p4 ?? x.P4),
+      p5: Number(x.p5 ?? x.P5),
+      p6: Number(x.p6 ?? x.P6),
+    }))
+    
+    // Actualizar el gráfico para mostrar los puntos utilizados
+    rebuildChart()
+  } catch (e) {
+    multiclickError.value = e?.response?.data || e?.message || 'No se pudo cargar la lista.'
+  } finally {
+    multiclickLoading.value = false
+  }
+}
+
+/* ===================== Helpers ===================== */
+function fmtDate(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('es-ES')
+}
+
+function fmtNum(n) {
+  const v = Number(n)
+  return Number.isFinite(v) ? v.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
+}
+
+function isSugerido(s) { 
+  return String(s || '').trim().toLowerCase() === 'sugerido' 
+}
+
+/* ===================== PDF Modal ===================== */
+function getRowPdfId(row) {
+  return row?.multiClickDocumentNo ?? row?.MultiClickDocumentNo ?? ''
+}
+
+function revokePdfUrl() {
+  if (pdfUrl.value) {
+    URL.revokeObjectURL(pdfUrl.value)
+    pdfUrl.value = null
+  }
+}
+
+function base64ToBlobUrl(base64, mime = 'application/pdf') {
+  const binStr = atob(base64)
+  const len = binStr.length
+  const bytes = new Uint8Array(len)
+  for (let i = 0; i < len; i++) bytes[i] = binStr.charCodeAt(i)
+  const blob = new Blob([bytes], { type: mime })
+  return URL.createObjectURL(blob)
+}
+
+async function fetchPdfBase64ById(id) {
+  const url = `/v1/ProposalCliente/ProposalPdf/${encodeURIComponent(id)}/false`
+  const { data } = await api.get(url, { responseType: 'text' })
+  let base64 = typeof data === 'string' ? data : (data && data.base64) || ''
+  if (!base64) throw new Error('PDF vacío')
+  if (base64.startsWith('"')) {
+    try { base64 = JSON.parse(base64) } catch { }
+  }
+  return base64
+}
+
+async function openPdfModal(row) {
+  if (pdfLoading.value) return
+  const id = getRowPdfId(row)
+  if (!id) { showToast('No hay identificador de PDF para esta fila.', 'error'); return }
+
+  pdfLoading.value = true
+  pdfError.value = ''
+  currentPdfId.value = id
+  revokePdfUrl()
+
+  try {
+    const base64 = await fetchPdfBase64ById(id)
+    pdfUrl.value = base64ToBlobUrl(base64)
+    showPdf.value = true
+    requestAnimationFrame(() => {
+      const el = document.querySelector('.pdf-modal')
+      if (el && typeof el.focus === 'function') el.focus()
+    })
+  } catch (e) {
+    pdfError.value = e?.response?.data?.message || e?.message || 'No se pudo cargar el PDF'
+    showPdf.value = true
+  } finally {
+    pdfLoading.value = false
+  }
+}
+
+function closePdf() {
+  showPdf.value = false
+  currentPdfId.value = null
+  pdfError.value = ''
+  revokePdfUrl()
+}
+
+function downloadFromModal() {
+  if (!pdfUrl.value) return
+  const a = document.createElement('a')
+  a.href = pdfUrl.value
+  a.download = `${currentPdfId.value || 'documento'}.pdf`
+  document.body.appendChild(a); a.click(); a.remove()
+}
+
+/* ===================== Aprobar MultiClick ===================== */
+async function approve(row) {
+  if (!isSugerido(row.status)) return
+  const key = `${row.customerNo}|${row.contractNo}|${row.cups}`
+  if (approving.has(key)) return
+  approving.add(key)
+  try {
+    await api.get('/v1/MultiClick/UpdateMultiClickEnergyContractAsync', {
+      params: {
+        multiclickDocumentType: row.multiClickDocumentType,
+        customerNo: row.customerNo,
+        contractNo: row.contractNo,
+        cups: row.cups
+      }
+    })
+    showToast('MultiClick aprobado correctamente.', 'success')
+    await loadMultiClickContracts()
+  } catch (e) {
+    showToast(e?.response?.data || e?.message || 'No se pudo aprobar el MultiClick', 'error')
+  } finally {
+    approving.delete(key)
+  }
+}
+
 onMounted(async () => {
   await loadLastContractIndex()
   await loadData()
+  await loadMultiClickContracts()
 })
 </script>
 
@@ -517,16 +736,130 @@ onMounted(async () => {
       <div class="card-header d-flex justify-content-between">
         <div>
           <h5 class="card-title mb-0">MultiClick</h5>
-          <small class="text-muted">Selecciona 1 punto de “OMIP Base”.</small>
+          <small class="text-muted">Selecciona 1 punto de "OMIP Base".</small>
         </div>
       </div>
       <div class="card-body">
         <apexchart ref="chartRef" type="line" height="400" :options="chartOptions" :series="series" />
+        
+        <!-- Leyenda de colores -->
+        <div class="chart-legend mt-3">
+          <div class="legend-item">
+            <span class="legend-dot" style="background-color: #dc3545;"></span>
+            <span class="legend-text">Seleccionado</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot" style="background-color: #9333ea;"></span>
+            <span class="legend-text">Click vigente</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot" style="background-color: #198754;"></span>
+            <span class="legend-text">5 precios más bajos</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot" style="background-color: #ff9f43;"></span>
+            <span class="legend-text">Disponible</span>
+          </div>
+        </div>
       </div>
     </div>
 
+    <!-- MultiClick Contracts -->
+    <section class="card mt-3">
+        <div class="card-head">
+          <h2 class="card-title">Listado de Multiclick</h2>
+        </div>
+        <div v-if="multiclickLoading" class="card-body center muted">Cargando…</div>
+        <div v-else-if="multiclickError" class="card-body text-danger">{{ multiclickError }}</div>
+
+        <div v-else class="table-scroll">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Contrato</th>
+                <th>CUPS</th>
+                <th>No. referencia operación</th>
+                <th>Tarifa</th>
+                <th>Precio Sel.</th>
+                <th>Fee</th>
+                <th>Duración</th>
+                <th>Inicio</th>
+                <th>Fin</th>
+                <th>Estado</th>
+                <th class="text-end">Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in multiclickRows" :key="r.contractNo + '|' + r.cups">
+                <td class="mono">
+                  {{ r.contractNo }}
+                  <small class="muted d-block">{{ r.multiClickDocumentType }} · {{ r.multiClickDocumentNo }}</small>
+                </td>
+                <td class="mono">{{ r.cups }}</td>
+                <td class="mono">{{ r.refApplicationOperNo }}</td>
+                <td>{{ r.rateNo }}</td>
+                <td class="mono">{{ fmtNum(r.selectedPrice) }}</td>
+                <td class="mono">{{ fmtNum(r.feeEnergy) }}</td>
+                <td>{{ r.duration }}</td>
+                <td>{{ fmtDate(r.startDate) }}</td>
+                <td>{{ fmtDate(r.endDate) }}</td>
+                <td>
+                  <span class="pill" :class="{ 'pill-sug': isSugerido(r.status) }">{{ r.status }}</span>
+                </td>
+                <td class="text-end">
+                  <div class="actions actions--end">
+                    <!-- Ver PDF en modal -->
+                    <button class="icon-btn" title="Ver PDF" @click="openPdfModal(r)">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" stroke="currentColor"
+                          stroke-width="2" fill="none" />
+                        <path d="M14 2v6h6" stroke="currentColor" stroke-width="2" fill="none" />
+                      </svg>
+                    </button>
+
+                    <button class="btn-ghost btn-ghost-custom" 
+                      :disabled="!isSugerido(r.status) || approving.has(`${r.customerNo}|${r.contractNo}|${r.cups}`)"
+                      @click="approve(r)"
+                      :title="isSugerido(r.status) ? 'Aprobar' : 'Solo disponible si el estado es Sugerido'">
+                      {{ approving.has(`${r.customerNo}|${r.contractNo}|${r.cups}`) ? 'Enviando…' : 'Aprobar' }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+
+              <tr v-if="!multiclickLoading && multiclickRows.length === 0">
+                <td colspan="11" class="empty">No hay resultados.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
     <MultiClickModal :show="showModal" :points="modalPoints" :customer-no="customerNo" :prefilled-cups="prefilledCups"
-      :default-period-type="periodTarget" @remove="onRemovePoint" @submit="onSubmitModal" @close="showModal = false" />
+      :default-period-type="periodTarget" :omip-data="omipMap" :multiclick-contracts="multiclickRows" 
+      :fee-energy="feeEnergy"
+      @remove="onRemovePoint" @submit="onSubmitModal" @close="showModal = false" @overlap-error="handleOverlapError" />
+
+    <!-- MODAL PDF -->
+    <Teleport to="body">
+      <div v-if="showPdf" class="pdf-modal" @keydown.esc="closePdf" tabindex="0">
+        <div class="pdf-toolbar">
+          <div class="left">
+            <strong class="mono">PDF · {{ currentPdfId || '—' }}</strong>
+          </div>
+          <div class="right">
+            <a v-if="pdfUrl" :href="pdfUrl" target="_blank" rel="noopener" class="btn-ghost">Abrir en pestaña</a>
+            <button class="btn-ghost" @click="downloadFromModal" :disabled="!pdfUrl">Descargar</button>
+            <button class="btn btn-close-pdf" @click="closePdf">Cerrar ✕</button>
+          </div>
+        </div>
+        <div class="pdf-body">
+          <div v-if="pdfLoading" class="pdf-center muted">Cargando PDF…</div>
+          <div v-else-if="pdfError" class="pdf-center text-danger">{{ pdfError }}</div>
+          <iframe v-else class="pdf-frame" :src="pdfUrl" title="Documento PDF"></iframe>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- Toast Bootstrap -->
     <teleport to="body">
@@ -645,4 +978,242 @@ onMounted(async () => {
   to   { transform: translateY(0);    opacity: 1;  }
 }
 
+/* ===================== Estilos para tabla de propuestas ===================== */
+.card-head {
+  padding: .75rem 1rem;
+  border-bottom: 1px solid #eef2f7;
+}
+.card-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.card-body {
+  padding: 1rem;
+}
+.center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 88px;
+}
+.muted {
+  color: #6b7280;
+}
+.text-danger {
+  color: #ef4444;
+}
+.table-scroll {
+  overflow: auto;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .95rem;
+}
+.table th,
+.table td {
+  padding: .6rem .7rem;
+  border-bottom: 1px solid #f1f5f9;
+  white-space: nowrap;
+}
+.table thead th {
+  background: #f8fafc;
+  position: sticky;
+  top: 0;
+}
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+.small {
+  font-size: .85rem;
+}
+.tag {
+  font-size: .75rem;
+  padding: .15rem .35rem;
+  border: 1px solid #e5e7eb;
+  border-radius: .4rem;
+  background: #f8fafc;
+}
+.ms {
+  margin-left: .35rem;
+}
+.pill {
+  display: inline-block;
+  padding: .15rem .45rem;
+  border-radius: .5rem;
+  border: 1px solid #e5e7eb;
+  font-size: .75rem;
+  background: #f8fafc;
+}
+.pill-status {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+.empty {
+  padding: 1rem;
+  text-align: center;
+  color: #6b7280;
+}
+.actions {
+  display: flex;
+  gap: .35rem;
+  align-items: center;
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #e5e7eb;
+  border-radius: .5rem;
+  background: #fff;
+  cursor: pointer;
+}
+.icon-btn:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+.icon-btn:hover:not(:disabled) {
+  background: #f8fafc;
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.d-block {
+  display: block;
+}
+.actions--end {
+  justify-content: flex-end;
+}
+.btn-ghost-custom {
+  border-radius: .5rem;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 .75rem;
+  line-height: 1;
+  cursor: pointer;
+  height: 36px;
+}
+.btn-ghost-custom:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+.btn-ghost-custom:hover:not(:disabled) {
+  background: #f8fafc;
+}
+.pill-sug {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #3730a3;
+}
+
+/* ===================== PDF Modal ===================== */
+.pdf-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  background: rgba(17, 24, 39, .92);
+  backdrop-filter: blur(2px);
+  outline: none;
+}
+.pdf-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .5rem .75rem;
+  color: #fff;
+  background: #111827;
+  border-bottom: 1px solid #1f2937;
+}
+.pdf-toolbar .left {
+  display: flex;
+  align-items: center;
+}
+.pdf-toolbar .right {
+  display: flex;
+  gap: .5rem;
+  align-items: center;
+}
+.pdf-body {
+  position: relative;
+}
+.pdf-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #111827;
+}
+.pdf-center {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .95rem;
+}
+.btn-ghost {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #e5e7eb;
+  cursor: pointer;
+  padding: .45rem .75rem;
+  border-radius: .5rem;
+}
+.btn-ghost:hover {
+  border-color: #374151;
+}
+.btn-close-pdf {
+  padding: .45rem .75rem;
+  border: 1px solid #d1d5db;
+  border-radius: .5rem;
+  background: #f9fafb;
+  cursor: pointer;
+  color: #111827;
+}
+.btn-close-pdf:hover {
+  background: #111827;
+  color: #fff;
+}
+
+/* ===================== Leyenda del gráfico ===================== */
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.legend-text {
+  font-size: 0.875rem;
+  color: #374151;
+  font-weight: 500;
+}
+
 </style>
+
