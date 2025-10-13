@@ -160,6 +160,7 @@ import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
+import config from '@/config/env'
 
 /* ======= helpers ======= */
 function isPendingStatus(status){
@@ -348,7 +349,7 @@ async function load(){
         customerNo: customerNo.value,
         pageNumber: page.value,
         pageSize: pageSize.value,
-        marketer: "NAB",
+        marketer: config.MARKETER,
         SearchContractNo: (search.value || undefined),
         status: (filters.status || undefined),
         searchProduct: (filters.productType || undefined),

@@ -190,6 +190,7 @@ import { useRouter } from 'vue-router'
 import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
+import config from '@/config/env'
 
 const showPdf = ref(false)
 const pdfUrl = ref(null)
@@ -465,7 +466,7 @@ async function load() {
                 pageSize: pageSize.value,
                 searchProposal: (search.value || undefined),
                 status: (filters.status || undefined),
-                marketer: "NAB",
+                marketer: config.MARKETER,
                 orderBy: orderByParam
             }
         })

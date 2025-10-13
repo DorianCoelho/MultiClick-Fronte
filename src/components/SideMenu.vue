@@ -1,7 +1,10 @@
 <script setup>
-import logo from '@/assets/images/Logo_nabalia.svg'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'   // 👈 importa tu store
+import { useAuthStore } from '@/stores/auth'
+import config from '@/config/env'
+
+// Importar logo dinámicamente
+const logo = new URL(config.LOGO_PATH, import.meta.url).href
 
 const router = useRouter()
 const auth = useAuthStore()                     // 👈 instancia del store

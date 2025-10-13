@@ -1,10 +1,10 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
 import router from '@/router'
+import config from '@/config/env'
 
 const api = axios.create({
-  baseURL: "https://beta-omip-httpapi.sucapp.com/api"
-  //baseURL: "http://localhost:5000/api/"
+  baseURL: config.API_BASE_URL
 })
 
 // Adjunta token

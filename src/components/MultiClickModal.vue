@@ -16,7 +16,7 @@ const props = defineProps({
   multiclickContracts: { type: Array, default: () => [] },  // Contratos MultiClick existentes
   feeEnergy: { type: Number, default: 0 }  // Fee energy del contrato
 })
-const emit = defineEmits(['close', 'submit', 'remove', 'overlap-error'])
+const emit = defineEmits(['close', 'submit', 'remove'])
 
 const MARKETER = 'NAB' // ajusta si tu back necesita otro
 
@@ -35,6 +35,10 @@ const contractNo = ref('')
 // Nuevos campos para mes inicio/fin
 const startMonth = ref('')
 const endMonth = ref('')
+
+// Estado para error de solapamiento
+const overlapError = ref('')
+const hasOverlap = ref(false)
 
 
 const average = (values) => {
@@ -78,16 +82,51 @@ function getMonthValue(year, month) {
   return `${year}-${String(month).padStart(2, '0')}`
 }
 
+// Helper para obtener el mes de inicio según la granularidad del click
+function getStartMonthFromKey(key, granularity) {
+  // Si es mes, retornar directamente
+  if (granularity === 'M' && /^\d{4}-\d{2}$/.test(key)) {
+    const [year, month] = key.split('-').map(Number)
+    return { year, month }
+  }
+  
+  // Si es trimestre (formato: "2027-Q1")
+  if (granularity === 'Q' && /^\d{4}-Q[1-4]$/.test(key)) {
+    const [year, q] = key.split('-')
+    const qNum = Number(q.substring(1))
+    const month = (qNum - 1) * 3 + 1  // Q1=1, Q2=4, Q3=7, Q4=10
+    return { year: Number(year), month }
+  }
+  
+  // Si es semestre (formato: "2027-S1")
+  if (granularity === 'S' && /^\d{4}-S[12]$/.test(key)) {
+    const [year, s] = key.split('-')
+    const month = s === 'S1' ? 1 : 7  // S1=enero, S2=julio
+    return { year: Number(year), month }
+  }
+  
+  // Si es año (formato: "2027")
+  if (granularity === 'Y' && /^\d{4}$/.test(key)) {
+    return { year: Number(key), month: 1 }  // Enero
+  }
+  
+  // Fallback: intentar parsear como mes
+  return parseMonthKey(key)
+}
+
 // Computed: opciones de meses disponibles según duración
 const startMonthOptions = computed(() => {
   if (!props.points || props.points.length === 0) return []
   
   // Obtener el primer punto seleccionado
   const firstPoint = props.points[0]
-  const parsed = parseMonthKey(firstPoint.key)
-  if (!parsed) return []
+  const granularity = firstPoint.granularity || 'M'
   
-  const { year, month } = parsed
+  // Obtener el mes de inicio según la granularidad
+  const startInfo = getStartMonthFromKey(firstPoint.key, granularity)
+  if (!startInfo) return []
+  
+  const { year, month } = startInfo
   const duration = periodType.value === 'Q' ? 3 : periodType.value === 'S' ? 6 : 12
   
   const options = []
@@ -179,6 +218,14 @@ watch([startMonth, periodType], () => {
   }
 }, { immediate: false })
 
+// Helper para formatear fecha en español
+function formatDateES(dateStr) {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
 // Función para validar solapamiento de fechas
 function checkDateOverlap(cupsToCheck) {
   if (!cupsToCheck || !startMonth.value) return null
@@ -223,7 +270,8 @@ function checkDateOverlap(cupsToCheck) {
       return {
         overlaps: true,
         contract: contract,
-        message: `Ya existe un Click con este CUPS en las fechas seleccionadas (Contrato: ${contract.contractNo})`
+        message: `Ya existe un Click con este CUPS en las fechas seleccionadas (Contrato: ${contract.contractNo})`,
+        detailedMessage: `El CUPS ya está siendo utilizado en el contrato ${contract.contractNo} durante el periodo ${formatDateES(contract.startDate)} a ${formatDateES(contract.endDate)}`
       }
     }
   }
@@ -234,6 +282,12 @@ function checkDateOverlap(cupsToCheck) {
 
 const canSubmit = computed(() => {
   formError.value = ''
+  
+  // Si hay error de solapamiento, no permitir envío
+  if (hasOverlap.value) {
+    return false
+  }
+  
   if (!props.customerNo) { formError.value = 'Falta el CustomerId.'; return false }
   if (!cups.value) { formError.value = 'Selecciona un CUPS.'; return false }
   if (!['Q', 'S', 'Y'].includes(periodType.value)) { formError.value = 'Selecciona un período cubierto.'; return false }
@@ -296,10 +350,9 @@ async function loadCups() {
       await nextTick()
       const overlapResult = checkDateOverlap(cups.value)
       if (overlapResult?.overlaps) {
-        // Cerrar modal y mostrar error
-        emit('close')
-        emit('overlap-error', overlapResult.message)
-        return
+        // Mostrar error en el modal
+        overlapError.value = overlapResult.detailedMessage
+        hasOverlap.value = true
       }
     } else if (arr.length === 1) {
       cups.value = arr[0]
@@ -307,10 +360,9 @@ async function loadCups() {
       await nextTick()
       const overlapResult = checkDateOverlap(cups.value)
       if (overlapResult?.overlaps) {
-        // Cerrar modal y mostrar error
-        emit('close')
-        emit('overlap-error', overlapResult.message)
-        return
+        // Mostrar error en el modal
+        overlapError.value = overlapResult.detailedMessage
+        hasOverlap.value = true
       }
     } else {
       cups.value = ''
@@ -328,8 +380,15 @@ watch(() => props.show, async (v) => {
   if (!v) {
     isSubmitting.value = false
     if (submitTimerId) { clearTimeout(submitTimerId); submitTimerId = null }
+    // Limpiar errores al cerrar
+    overlapError.value = ''
+    hasOverlap.value = false
     return
   }
+  
+  // Limpiar errores al abrir
+  overlapError.value = ''
+  hasOverlap.value = false
   
   console.log('Modal abierto. Props:', { 
     points: props.points, 
@@ -368,30 +427,38 @@ watch(() => props.prefilledCups, (v) => {
   if (cupsOptions.value.includes(v)) cups.value = v
 })
 
-// Watch para validar cuando el usuario selecciona un CUPS manualmente
-watch(cups, async (newCups, oldCups) => {
-  // Solo validar si el modal está abierto y el CUPS cambió por selección manual
-  if (!props.show || !newCups || newCups === oldCups) return
-  
-  // Si hay múltiples opciones y el usuario seleccionó una
-  if (cupsOptions.value.length > 1) {
-    await nextTick()
-    const overlapResult = checkDateOverlap(newCups)
-    if (overlapResult?.overlaps) {
-      // Mostrar error y limpiar selección
-      formError.value = overlapResult.message
-      // Cerrar modal después de un breve delay para que el usuario vea el mensaje
-      setTimeout(() => {
-        emit('close')
-        emit('overlap-error', overlapResult.message)
-      }, 1500)
-    } else {
-      // Limpiar error si no hay solapamiento
-      if (formError.value.includes('Ya existe un Click')) {
-        formError.value = ''
-      }
-    }
+// Función para validar el CUPS actual
+async function validateCurrentCups() {
+  if (!props.show || !cups.value) {
+    overlapError.value = ''
+    hasOverlap.value = false
+    return
   }
+  
+  await nextTick()
+  const overlapResult = checkDateOverlap(cups.value)
+  
+  if (overlapResult?.overlaps) {
+    overlapError.value = overlapResult.detailedMessage
+    hasOverlap.value = true
+  } else {
+    overlapError.value = ''
+    hasOverlap.value = false
+  }
+}
+
+// Watch para validar cuando el usuario selecciona un CUPS
+watch(cups, async (newCups, oldCups) => {
+  // Solo validar si el modal está abierto y el CUPS cambió
+  if (!props.show || newCups === oldCups) return
+  
+  await validateCurrentCups()
+})
+
+// Watch para revalidar cuando cambia el mes de inicio o la duración
+watch([startMonth, periodType], async () => {
+  if (!props.show) return
+  await validateCurrentCups()
 })
 function blockSubmit() {
   if (isSubmitting.value) return
@@ -411,17 +478,20 @@ function onSubmit() {
 
   if (!canSubmit.value) return
 
+  const basePrice = Number(parseNumLike(fixedPrice.value) || 0)
+  const fee = Number(props.feeEnergy || 0)
+  
   const payload = {
     contractNo: contractNo.value,
     customerNo: String(props.customerNo),
     customerCups: cups.value,
     periodType: periodType.value,
-    fixedPriceOmip: Number(parseNumLike(fixedPrice.value)),
+    fixedPriceOmip: basePrice + fee,                               // Precio base + fee energy
     periodKeys: props.points.map(p => `${p.key}-01`),
     volumeMw: 0,
     startMonth: startMonth.value ? `${startMonth.value}-01` : '',   // Fecha mes inicio (YYYY-MM-01)
     endMonth: endMonth.value,                                       // Mes final calculado (texto)
-    feeEnergy: Number(props.feeEnergy || 0)                        // Fee energy del contrato
+    feeEnergy: fee                                                  // Fee energy del contrato
   }
 
   emit('submit', payload)
@@ -522,12 +592,19 @@ function onRemove(key) { emit('remove', key) }
           <div class="row g-3 p-3 justify-content-center align-items-center">
             <div class="col-12 col-md-6">
               <label class="form-label">CUPS <span class="text-danger">*</span></label>
-              <select class="form-select" v-model="cups" :disabled="loadingCups || !!loadError">
+              <select class="form-select" v-model="cups" :disabled="loadingCups || !!loadError" 
+                      :class="{ 'is-invalid': hasOverlap }">
                 <option value="">Selecciona la opción</option>
                 <option v-for="c in cupsOptions" :key="c" :value="c">{{ c }}</option>
               </select>
               <div v-if="loadingCups" class="form-text">Cargando CUPS…</div>
               <div v-if="loadError" class="text-danger small">{{ loadError }}</div>
+              
+              <!-- Mensaje de error de solapamiento debajo del CUPS -->
+              <div v-if="overlapError" class="alert alert-danger mt-2 mb-0" style="font-size: 0.875rem;">
+                <strong>⚠️ CUPS no disponible</strong><br/>
+                {{ overlapError }}
+              </div>
             </div>
           </div>
 
@@ -543,7 +620,6 @@ function onRemove(key) { emit('remove', key) }
               <small class="text-muted">Sugerido: media de los puntos seleccionados.</small>
             </div>
           </div>
-
 
           <div v-if="formError" class="alert alert-warning mt-3 mb-0">
             {{ formError }}
@@ -621,7 +697,8 @@ function onRemove(key) { emit('remove', key) }
 
 .btn-close {
   appearance: none;
-  background: none;
+  background: none !important;
+  background-image: none !important;
   border: none;
   font-size: 1.25rem;
   line-height: 1;
@@ -632,10 +709,12 @@ function onRemove(key) { emit('remove', key) }
   align-items: center;
   justify-content: center;
   border-radius: .5rem;
+  color: #111827;
 }
 
 .btn-close:hover {
-  background: #f3f4f6;
+  background: #f3f4f6 !important;
+  background-image: none !important;
 }
 
 .table-responsive {

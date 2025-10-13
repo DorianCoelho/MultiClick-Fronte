@@ -1,6 +1,7 @@
-@use 'variables' as *;
+// Las variables se importan automáticamente desde vite.config.js
+// según el marketer configurado en VITE_MARKETER
 
-// Importa Bootstrap usando las variables override de arriba
+// Importa Bootstrap usando las variables override
 @import "bootstrap/scss/bootstrap";
 
 // Tus estilos globales

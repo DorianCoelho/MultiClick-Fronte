@@ -337,7 +337,7 @@ onMounted(() => window.addEventListener('keydown', onKey))
                 <th>CUPS</th>
                 <th>No. referencia operación</th>
                 <th @click="toggleSort('Rate')" :class="thClass('Rate')">Tarifa</th>
-                <th>Precio Sel.</th>
+                <th>Precio Referencia OMIP</th>
                 <th>Fee</th>
                 <th>Duración</th>
                 <th @click="toggleSort('StartDate')" :class="thClass('StartDate')">Inicio</th>

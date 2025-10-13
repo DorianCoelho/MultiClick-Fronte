@@ -31,6 +31,30 @@ cd MultiClick-Fronte
 npm install
 ```
 
+3. Configura las variables de entorno
+```bash
+# Crea un archivo .env.local con las siguientes variables:
+VITE_API_BASE_URL=http://localhost:5000/api/
+VITE_MARKETER=NAB
+
+# Para NAB:
+VITE_LOGO_PATH=/src/assets/images/Logo_nabalia.svg
+VITE_FAVICON_16=/faviconV216.png
+VITE_FAVICON_32=/faviconV232.png
+VITE_FAVICON_192=/faviconV2192.png
+VITE_FAVICON_512=/faviconV2512.png
+VITE_FAVICON_APPLE=/faviconV2192.png
+
+# Para ACIS, cambiar a:
+# VITE_MARKETER=ACIS
+# VITE_LOGO_PATH=/src/assets/images/Logo_acis.svg
+# VITE_FAVICON_16=/favicon_acis.png
+# VITE_FAVICON_32=/favicon_acis.png
+# VITE_FAVICON_192=/favicon_acis.png
+# VITE_FAVICON_512=/favicon_acis.png
+# VITE_FAVICON_APPLE=/favicon_acis.png
+```
+
 ## 🏃‍♂️ Scripts disponibles
 
 ### Modo desarrollo
@@ -98,9 +122,46 @@ Este proyecto usa Vite, no Vue CLI. Usa `npm run dev` en lugar de `npm run serve
 - La gestión de estado se realiza con Pinia (sucesor de Vuex)
 - Las llamadas a API se centralizan en `/src/services/api.js`
 
+### 🎨 Sistema de Colores por Marketer
+
+El proyecto soporta diferentes esquemas de colores según el marketer configurado:
+
+**NAB (por defecto):**
+- Primary: `#f0047f` (Rosa)
+- Secondary: `#0f298f` (Azul)
+- Archivo: `_variables-nab.scss`
+
+**ACIS:**
+- Primary: `#08cec7` (Turquesa)
+- Secondary: `#073c42` (Verde oscuro)
+- Archivo: `_variables-acis.scss`
+
+Los colores se seleccionan automáticamente según la variable `VITE_MARKETER` en tiempo de compilación.
+
 ## 🌐 Despliegue
 
 El proyecto está configurado para desplegarse en Vercel (ver `vercel.json`).
+
+### Variables de Entorno en Vercel
+
+Para configurar las variables de entorno en Vercel:
+
+1. Ve a tu proyecto en Vercel Dashboard
+2. Settings → Environment Variables
+3. Agrega las siguientes variables:
+
+| Variable | Valor | Descripción |
+|----------|-------|-------------|
+| `VITE_API_BASE_URL` | `https://beta-omip-httpapi.sucapp.com/api` | URL base de la API |
+| `VITE_MARKETER` | `NAB` | Código del marketer |
+| `VITE_LOGO_PATH` | `/src/assets/images/Logo_nabalia.svg` | Ruta del logo |
+| `VITE_FAVICON_16` | `/faviconV216.png` | Favicon 16x16 |
+| `VITE_FAVICON_32` | `/faviconV232.png` | Favicon 32x32 |
+| `VITE_FAVICON_192` | `/faviconV2192.png` | Favicon 192x192 |
+| `VITE_FAVICON_512` | `/faviconV2512.png` | Favicon 512x512 |
+| `VITE_FAVICON_APPLE` | `/faviconV2192.png` | Apple Touch Icon |
+
+4. Redeploy el proyecto para aplicar los cambios
 
 ## 📄 Licencia
 

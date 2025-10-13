@@ -199,6 +199,7 @@ import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import EnergyProductsModal from '@/components/EnergyProductsModal.vue'
+import config from '@/config/env'
 
 /* ===================== Auth ===================== */
 const auth = useAuthStore()
@@ -371,7 +372,7 @@ async function loadProposals () {
   propsLoading.value = true; propsError.value = ''; proposals.value = []
   try {
     const { data } = await api.get('/v1/ProposalCliente/ProposalLastsList', {
-      params: { customerNo: customerNo.value, marketer: 'NAB' }
+      params: { customerNo: customerNo.value, marketer: config.MARKETER }
     })
     const arr = (data?.result ?? data?.Result ?? [])
     proposals.value = arr.map(p => ({

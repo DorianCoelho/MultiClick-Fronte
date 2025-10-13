@@ -112,7 +112,7 @@
                 </div>
 
                 <!-- FEE (solo si hay FeeGroupId) -->
-                <template v-if="p.feeGroupId">
+                <!-- <template v-if="p.feeGroupId">
                     <h3 class="sec mt text-primary">FEE</h3>
                     <div class="p-5 pt-0">
                         <h6 class="subsec">FEE POTENCIA</h6>
@@ -177,7 +177,7 @@
                             </table>
                         </div>
                     </div>
-                </template>
+                </template> -->
 
                 <!-- MULTICUPS
                 <h3 class="sec mt">MULTICUPS</h3>
@@ -252,7 +252,7 @@
                         </table>
                     </div>
 
-                    <h6 class="subsec mt-sm">PRECIO ENERGÍA</h6>
+                    <!-- <h6 class="subsec mt-sm">PRECIO ENERGÍA</h6>
                     <div class="table-scroll">
                         <table class="table">
                             <thead>
@@ -281,7 +281,7 @@
                                 </tr>
                             </tbody>
                         </table>
-                    </div>
+                    </div> -->
                 </div>
 
                 <!-- INFORMACIÓN CONSUMOS -->

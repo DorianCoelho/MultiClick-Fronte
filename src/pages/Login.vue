@@ -31,9 +31,12 @@
 </template>
 
 <script setup>
-import logo from '@/assets/images/Logo_nabalia.svg'
 import { reactive, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import config from '@/config/env'
+
+// Importar logo dinámicamente
+const logo = new URL(config.LOGO_PATH, import.meta.url).href
 import { useRoute, useRouter } from 'vue-router'
 
 const auth = useAuthStore()

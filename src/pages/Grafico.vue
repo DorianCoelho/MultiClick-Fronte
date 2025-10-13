@@ -6,6 +6,7 @@ import MultiClickModal from '@/components/MultiClickModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRoute } from 'vue-router'
 import { Toast } from 'bootstrap'
+import config from '@/config/env'
 
 const route = useRoute()
 
@@ -130,7 +131,7 @@ const selectedSet = reactive(new Set()) // selección usuario
 const MAX_POINTS = 1
 
 const canSend = computed(() =>
-  hasLastIndex.value && gran.value === 'M' && selectedSet.size > 0
+  hasLastIndex.value && selectedSet.size > 0
 )
 
 // ===================== Cargar datos =====================
@@ -140,7 +141,7 @@ async function loadLastContractIndex() {
   feeLoaded.value = true
   try {
     const { data } = await api.get('/v1/ContractCliente/LastContractIndex', {
-      params: { customerNo: customerNo.value, marketer: 'NAB' }
+      params: { customerNo: customerNo.value, marketer: config.MARKETER }
     })
     const result = data
 
@@ -193,7 +194,8 @@ async function loadData() {
     if (hasLastIndex.value) {
       // suma el fee a OMIP Base
       for (const [k, v] of omipMap.entries()) {
-        if (v != null) omipMap.set(k, Number(v) + Number(feeEnergy.value || 0))
+        //if (v != null) omipMap.set(k, Number(v) + Number(feeEnergy.value || 0))
+        if (v != null) omipMap.set(k, Number(v))
       }
     }
 
@@ -356,14 +358,84 @@ const chartOptions = ref({
     zoom: { enabled: false },
     events: {
       dataPointSelection(event, ctx, cfg) { onTogglePoint(cfg) },
-      markerClick(event, ctx, cfg) { onTogglePoint(cfg) }
+      markerClick(event, ctx, cfg) { onTogglePoint(cfg) },
+      legendClick(chartContext, seriesIndex, config) {
+        const w = chartContext.w
+        const collapsed = w.globals.collapsedSeriesIndices || []
+        
+        // Verificar si esta serie está actualmente visible
+        const isVisible = !collapsed.includes(seriesIndex)
+        
+        // Contar cuántas series están visibles
+        const visibleCount = series.value.length - collapsed.length
+        
+        console.log('Legend click:', { 
+          seriesIndex, 
+          seriesName: w.globals.seriesNames[seriesIndex],
+          isVisible, 
+          visibleCount, 
+          collapsed,
+          totalSeries: series.value.length
+        })
+        
+        // Si intentamos ocultar la última serie visible, bloquear
+        if (isVisible && visibleCount <= 1) {
+          console.log('⚠️ No se puede ocultar la última serie visible')
+          // Retornar sin hacer nada
+          return
+        }
+        
+        // Permitir toggle manualmente
+        console.log('✅ Toggle permitido para serie:', w.globals.seriesNames[seriesIndex])
+        chartContext.toggleSeries(w.globals.seriesNames[seriesIndex])
+      }
     }
   },
   colors: [colorOmip, '#0d6efd', '#6c757d'],
   markers: { size: 6, hover: { size: 8 }, discrete: [] },
   stroke: { curve: 'straight' },
   dataLabels: { enabled: false },
-  tooltip: { shared: true, intersect: false },
+  tooltip: { 
+    shared: true, 
+    intersect: false,
+    custom: function({ series, seriesIndex, dataPointIndex, w }) {
+      const monthKey = periodKeys.value[dataPointIndex]
+      const contract = getContractForMonth(monthKey)
+      
+      // Obtener el label correcto (mes/año)
+      const label = w.globals.categoryLabels?.[dataPointIndex] || w.globals.labels[dataPointIndex] || monthKey
+      
+      // Construir tooltip estándar
+      let html = '<div class="apexcharts-tooltip-standard">'
+      
+      // Título con el mes
+      html += `<div class="tooltip-title">${label}</div>`
+      
+      // Mostrar todas las series con sus valores
+      for (let i = 0; i < series.length; i++) {
+        const value = series[i][dataPointIndex]
+        const colorDot = w.globals.colors[i]
+        html += `<div class="tooltip-row">
+          <span class="tooltip-series">
+            <span class="tooltip-dot" style="background-color: ${colorDot};"></span>
+            ${w.globals.seriesNames[i]}:
+          </span>
+          <span class="tooltip-value">${value != null ? value.toFixed(2) + ' €/MWh' : '-'}</span>
+        </div>`
+      }
+      
+      // Si hay contrato, agregar footer de advertencia
+      if (contract) {
+        html += `<div class="tooltip-footer">
+          <strong>⚠️ Este punto ya tiene un click vigente</strong><br/>
+          <small>CUPS: ${contract.cups} | Contrato: ${contract.contractNo}</small>
+        </div>`
+      }
+      
+      html += '</div>'
+      return html
+    }
+  },
   grid: { borderColor: '#e0e0e0' },
   xaxis: { categories: [] },
   yaxis: {
@@ -372,7 +444,15 @@ const chartOptions = ref({
       formatter: (val) => (val == null ? '' : Number(val).toFixed(2)) // ← 2 decimales en el eje
     }
   },
-  legend: { show: true, position: 'top', horizontalAlign: 'right', offsetY: 8 }
+  legend: { 
+    show: true, 
+    position: 'top', 
+    horizontalAlign: 'right', 
+    offsetY: 8,
+    onItemClick: {
+      toggleDataSeries: false  // Deshabilitar toggle automático para controlarlo manualmente
+    }
+  }
 })
 
 // Función para verificar si un mes está ocupado por algún contrato
@@ -395,6 +475,28 @@ function isMonthUsed(monthKey) {
   }
   
   return false
+}
+
+// Función para obtener el contrato de un mes específico
+function getContractForMonth(monthKey) {
+  // monthKey formato: "YYYY-MM"
+  const [year, month] = monthKey.split('-').map(Number)
+  const checkDate = new Date(year, month - 1, 1)
+  
+  // Buscar el contrato que incluye este mes
+  for (const contract of multiclickRows.value) {
+    if (!contract.startDate || !contract.endDate) continue
+    
+    const startDate = new Date(contract.startDate)
+    const endDate = new Date(contract.endDate)
+    
+    // Verificar si checkDate está entre startDate y endDate
+    if (checkDate >= startDate && checkDate <= endDate) {
+      return contract
+    }
+  }
+  
+  return null
 }
 
 function buildDiscreteMarkers(keys) {
@@ -431,30 +533,46 @@ function rebuildChart() {
 }
 
 function onTogglePoint(cfg) {
-  // BLOQUEA selección si no es MES o no hay contrato
-  if (gran.value !== 'M' || !hasLastIndex.value) return
+  // Solo verificar que haya contrato, permitir cualquier granularidad
+  if (!hasLastIndex.value) return
   if (cfg.seriesIndex !== 0) return
 
   const idx = cfg.dataPointIndex
   const k = periodKeys.value[idx]
+  
   if (selectedSet.has(k)) {
+    // Si ya está seleccionado, deseleccionarlo
     selectedSet.delete(k)
-  } else {
-    if (selectedSet.size >= MAX_POINTS) {
-      alert(`Solo puedes seleccionar hasta ${MAX_POINTS} puntos.`)
-      return
+    // Actualizar marcadores
+    chartOptions.value = {
+      ...chartOptions.value,
+      markers: { size: 6, hover: { size: 8 }, discrete: buildDiscreteMarkers(periodKeys.value) }
     }
+  } else {
+    // Si ya hay puntos seleccionados, limpiar todo primero
+    if (selectedSet.size >= MAX_POINTS) {
+      selectedSet.clear()
+    }
+    // Agregar el nuevo punto
     selectedSet.add(k)
+    
+    // Actualizar marcadores
+    chartOptions.value = {
+      ...chartOptions.value,
+      markers: { size: 6, hover: { size: 8 }, discrete: buildDiscreteMarkers(periodKeys.value) }
+    }
+    
+    // Abrir el modal automáticamente
+    openModal()
   }
-  chartOptions.value = {
-    ...chartOptions.value,
-    markers: { size: 6, hover: { size: 8 }, discrete: buildDiscreteMarkers(periodKeys.value) }
-  }
+  
   btnDisabled.value = selectedSet.size === 0 || !Array.from(selectedSet).some(x => periodKeys.value.includes(x))
 }
 
 function setGran(g) {
   gran.value = g
+  // Limpiar selección al cambiar de granularidad
+  selectedSet.clear()
   rebuildChart()
 }
 
@@ -487,7 +605,12 @@ function openModal() {
     else if (/^\d{4}-S[12]$/.test(k)) value = aggregateForPeriod(k, 'S', omipMap)
     else value = aggregateForPeriod(k, 'Y', omipMap)
 
-    return { key: k, label, value }
+    return { 
+      key: k, 
+      label, 
+      value,
+      granularity: gran.value  // Pasar la granularidad del click
+    }
   })
   showModal.value = true
 }
@@ -511,6 +634,9 @@ async function onSubmitModal(payload) {
     if (res.data.success) {
       showToast(`Orden de compra creada con éxito Nº ${res.data.contractNo}`, 'success')
       showModal.value = false
+      // Limpiar selección
+      selectedSet.clear()
+      modalPoints.value = []
       // Recargar la lista de contratos
       await loadMultiClickContracts()
     } else {
@@ -519,16 +645,6 @@ async function onSubmitModal(payload) {
   } catch (e) {
     showToast(e?.response?.data?.error || 'Ocurrió un error inesperado', 'error')
   }
-}
-
-function handleOverlapError(message) {
-  // Limpiar selección
-  selectedSet.clear()
-  modalPoints.value = []
-  showModal.value = false
-  
-  // Mostrar mensaje de error
-  showToast(message, 'error', 'Error de Solapamiento')
 }
 
 /* ===================== Cargar MultiClick Contracts ===================== */
@@ -705,38 +821,45 @@ onMounted(async () => {
 
 <template>
   <DashboardLayout>
-    <div class="d-flex align-items-center justify-content-between mb-3">
+    <div class="header-controls mb-3">
       <h1 class="h4 mb-0">MultiClick · Gráfico</h1>
 
-      <div class="btn-group">
-        <button class="btn btn-outline-secondary" :class="{ active: gran === 'M' }" @click="setGran('M')">Mes</button>
-        <button class="btn btn-outline-secondary" :class="{ active: gran === 'Q' }"
-          @click="setGran('Q')">Trimestre</button>
-        <button class="btn btn-outline-secondary" :class="{ active: gran === 'S' }"
-          @click="setGran('S')">Semestre</button>
-        <button class="btn btn-outline-secondary" :class="{ active: gran === 'Y' }" @click="setGran('Y')">Año</button>
-      </div>
+      <div class="controls-group">
+        <div class="control-item">
+          <span class="control-label">Granularidad:</span>
+          <div class="btn-group">
+            <button class="btn btn-outline-secondary" :class="{ active: gran === 'M' }" @click="setGran('M')">Mes</button>
+            <button class="btn btn-outline-secondary" :class="{ active: gran === 'Q' }"
+              @click="setGran('Q')">Trimestre</button>
+            <button class="btn btn-outline-secondary" :class="{ active: gran === 'S' }"
+              @click="setGran('S')">Semestre</button>
+            <button class="btn btn-outline-secondary" :class="{ active: gran === 'Y' }" @click="setGran('Y')">Año</button>
+          </div>
+        </div>
 
-      <!-- SOLO EN MES: periodicidad objetivo para la solicitud -->
-      <div v-if="gran === 'M'"><span>Duración click: </span>
-        <div class="btn-group ms-2" role="group" aria-label="Período cubierto">
-          <button class="btn btn-outline-secondary" :class="{ active: periodTarget === 'Q' }"
-            @click="periodTarget = 'Q'">Trimestre</button>
-          <button class="btn btn-outline-secondary" :class="{ active: periodTarget === 'S' }"
-            @click="periodTarget = 'S'">Semestre</button>
-          <button class="btn btn-outline-secondary" :class="{ active: periodTarget === 'Y' }"
-            @click="periodTarget = 'Y'">Año</button>
+        <!-- Duración click: siempre visible -->
+        <div class="control-item">
+          <span class="control-label">Duración click:</span>
+          <div class="btn-group" role="group" aria-label="Período cubierto">
+            <button class="btn btn-outline-secondary" :class="{ active: periodTarget === 'Q' }"
+              @click="periodTarget = 'Q'">Trimestre</button>
+            <button class="btn btn-outline-secondary" :class="{ active: periodTarget === 'S' }"
+              @click="periodTarget = 'S'">Semestre</button>
+            <button class="btn btn-outline-secondary" :class="{ active: periodTarget === 'Y' }"
+              @click="periodTarget = 'Y'">Año</button>
+          </div>
         </div>
       </div>
-
-      <button class="btn btn-primary" :disabled="!canSend" @click="openModal">Crear click</button>
     </div>
 
     <div class="card">
-      <div class="card-header d-flex justify-content-between">
+      <div class="card-header d-flex justify-content-between align-items-center">
         <div>
           <h5 class="card-title mb-0">MultiClick</h5>
           <small class="text-muted">Selecciona 1 punto de "OMIP Base".</small>
+        </div>
+        <div>
+          <span class="badge text-dark">Datos orientativos de mercado</span>
         </div>
       </div>
       <div class="card-body">
@@ -838,7 +961,7 @@ onMounted(async () => {
     <MultiClickModal :show="showModal" :points="modalPoints" :customer-no="customerNo" :prefilled-cups="prefilledCups"
       :default-period-type="periodTarget" :omip-data="omipMap" :multiclick-contracts="multiclickRows" 
       :fee-energy="feeEnergy"
-      @remove="onRemovePoint" @submit="onSubmitModal" @close="showModal = false" @overlap-error="handleOverlapError" />
+      @remove="onRemovePoint" @submit="onSubmitModal" @close="showModal = false" />
 
     <!-- MODAL PDF -->
     <Teleport to="body">
@@ -893,6 +1016,33 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* ===================== Header Controls ===================== */
+.header-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.controls-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.control-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.control-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #374151;
+  white-space: nowrap;
+}
+
 /* nada especial, el contenedor del toast ya lleva z-index inline */
 .pretty-toast {
   --toast-radius: 14px;
@@ -1215,5 +1365,79 @@ onMounted(async () => {
   font-weight: 500;
 }
 
+</style>
+
+<style>
+/* Estilos globales para tooltip personalizado de ApexCharts */
+.apexcharts-tooltip-standard {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  padding: 0;
+  min-width: 220px;
+  font-family: inherit;
+}
+
+.apexcharts-tooltip-standard .tooltip-title {
+  background: #f8fafc;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #111827;
+}
+
+.apexcharts-tooltip-standard .tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.875rem;
+}
+
+.apexcharts-tooltip-standard .tooltip-row:last-of-type {
+  border-bottom: none;
+}
+
+.apexcharts-tooltip-standard .tooltip-series {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #6b7280;
+}
+
+.apexcharts-tooltip-standard .tooltip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.apexcharts-tooltip-standard .tooltip-value {
+  font-weight: 600;
+  color: #111827;
+}
+
+.apexcharts-tooltip-standard .tooltip-footer {
+  background: linear-gradient(135deg, #7c3aed, #9333ea);
+  color: #ffffff;
+  padding: 0.6rem 0.75rem;
+  border-top: 2px solid #a855f7;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.apexcharts-tooltip-standard .tooltip-footer strong {
+  font-weight: 600;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.apexcharts-tooltip-standard .tooltip-footer small {
+  opacity: 0.9;
+  font-size: 0.75rem;
+}
 </style>
 
