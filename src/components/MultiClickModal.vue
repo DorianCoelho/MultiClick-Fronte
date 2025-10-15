@@ -40,6 +40,11 @@ const endMonth = ref('')
 const overlapError = ref('')
 const hasOverlap = ref(false)
 
+// Estado para modal simple de CUPS no disponible
+const showSimpleModal = ref(false)
+const multicupsEnabled = ref(true)  // Indica si el contrato permite multicups
+const modalReady = ref(false)  // Controla si el modal está listo para mostrarse
+
 
 const average = (values) => {
   const v = values.map(Number).filter(x => Number.isFinite(x))
@@ -259,6 +264,7 @@ function checkDateOverlap(cupsToCheck) {
     
     console.log('Comparando con contrato:', { 
       contractNo: contract.contractNo,
+      status: contract.status,
       start: contractStart, 
       end: contractEnd 
     })
@@ -267,11 +273,17 @@ function checkDateOverlap(cupsToCheck) {
     // Hay solapamiento si: (newStart <= contractEnd) && (newEnd >= contractStart)
     if (newStart <= contractEnd && newEnd >= contractStart) {
       console.log('¡Solapamiento detectado!')
+      
+      // Estados que bloquean la creación de click
+      const blockingStates = ['Pendiente de aceptación', 'Aceptado', 'Sugerido']
+      const isBlockingState = blockingStates.includes(contract.status)
+      
       return {
-        overlaps: true,
+        overlaps: isBlockingState,  // Bloquear si el estado es bloqueante
         contract: contract,
         message: `Ya existe un Click con este CUPS en las fechas seleccionadas (Contrato: ${contract.contractNo})`,
-        detailedMessage: `El CUPS ya está siendo utilizado en el contrato ${contract.contractNo} durante el periodo ${formatDateES(contract.startDate)} a ${formatDateES(contract.endDate)}`
+        detailedMessage: `El CUPS ya está siendo utilizado en el contrato ${contract.contractNo} durante el periodo ${formatDateES(contract.startDate)} a ${formatDateES(contract.endDate)}`,
+        isAccepted: isBlockingState
       }
     }
   }
@@ -283,7 +295,7 @@ function checkDateOverlap(cupsToCheck) {
 const canSubmit = computed(() => {
   formError.value = ''
   
-  // Si hay error de solapamiento, no permitir envío
+  // Si hay solapamiento, bloquear el envío
   if (hasOverlap.value) {
     return false
   }
@@ -325,6 +337,7 @@ async function loadCups() {
     userName.value = data.customerName ?? data.CustomerName ?? ''
     cif.value = data.vatRegistrationNo ?? data.VatRegistrationNo ?? ''
     contractNo.value = data.no ?? data.No ?? ''
+    multicupsEnabled.value = multicups
 
 
     let arr = []
@@ -349,20 +362,34 @@ async function loadCups() {
       // Validar solapamiento
       await nextTick()
       const overlapResult = checkDateOverlap(cups.value)
-      if (overlapResult?.overlaps) {
-        // Mostrar error en el modal
-        overlapError.value = overlapResult.detailedMessage
-        hasOverlap.value = true
+      // Si hay solapamiento
+      if (overlapResult && overlapResult.contract) {
+        // Si no permite multicups, mostrar modal simple
+        if (!multicupsEnabled.value) {
+          overlapError.value = overlapResult.detailedMessage
+          showSimpleModal.value = true
+        } else {
+          // Si permite multicups, comportamiento normal
+          overlapError.value = overlapResult.detailedMessage
+          hasOverlap.value = true
+        }
       }
     } else if (arr.length === 1) {
       cups.value = arr[0]
       // Validar solapamiento automáticamente
       await nextTick()
       const overlapResult = checkDateOverlap(cups.value)
-      if (overlapResult?.overlaps) {
-        // Mostrar error en el modal
-        overlapError.value = overlapResult.detailedMessage
-        hasOverlap.value = true
+      // Si hay solapamiento
+      if (overlapResult && overlapResult.contract) {
+        // Si no permite multicups, mostrar modal simple
+        if (!multicupsEnabled.value) {
+          overlapError.value = overlapResult.detailedMessage
+          showSimpleModal.value = true
+        } else {
+          // Si permite multicups, comportamiento normal
+          overlapError.value = overlapResult.detailedMessage
+          hasOverlap.value = true
+        }
       }
     } else {
       cups.value = ''
@@ -372,6 +399,8 @@ async function loadCups() {
     loadError.value = e?.response?.data?.message || 'No se pudieron cargar los CUPS desde el contrato.'
   } finally {
     loadingCups.value = false
+    // Activar el modal después de que se complete la carga
+    modalReady.value = true
   }
 }
 /* =============================================================== */
@@ -383,12 +412,16 @@ watch(() => props.show, async (v) => {
     // Limpiar errores al cerrar
     overlapError.value = ''
     hasOverlap.value = false
+    showSimpleModal.value = false
+    modalReady.value = false
     return
   }
   
   // Limpiar errores al abrir
   overlapError.value = ''
   hasOverlap.value = false
+  showSimpleModal.value = false
+  modalReady.value = false
   
   console.log('Modal abierto. Props:', { 
     points: props.points, 
@@ -432,18 +465,28 @@ async function validateCurrentCups() {
   if (!props.show || !cups.value) {
     overlapError.value = ''
     hasOverlap.value = false
+    showSimpleModal.value = false
     return
   }
   
   await nextTick()
   const overlapResult = checkDateOverlap(cups.value)
   
-  if (overlapResult?.overlaps) {
-    overlapError.value = overlapResult.detailedMessage
-    hasOverlap.value = true
+  // Si hay solapamiento
+  if (overlapResult && overlapResult.contract) {
+    // Si no permite multicups, mostrar modal simple
+    if (!multicupsEnabled.value) {
+      overlapError.value = overlapResult.detailedMessage
+      showSimpleModal.value = true
+    } else {
+      // Si permite multicups, comportamiento normal
+      overlapError.value = overlapResult.detailedMessage
+      hasOverlap.value = true
+    }
   } else {
     overlapError.value = ''
     hasOverlap.value = false
+    showSimpleModal.value = false
   }
 }
 
@@ -503,7 +546,7 @@ function onRemove(key) { emit('remove', key) }
 
 <template>
   <Teleport to="body">
-    <div v-if="show" class="mc-backdrop" aria-modal="true" role="dialog" @click.self="$emit('close')"
+    <div v-if="show && modalReady && !showSimpleModal" class="mc-backdrop" aria-modal="true" role="dialog" @click.self="$emit('close')"
       @keydown.esc="$emit('close')">
       <div id="mc-modal" class="mc-modal" tabindex="-1">
         <div class="mc-header">
@@ -591,6 +634,12 @@ function onRemove(key) { emit('remove', key) }
           </div>
           <div class="row g-3 p-3 justify-content-center align-items-center">
             <div class="col-12 col-md-6">
+              <label class="form-label">N.º Contrato</label>
+              <input class="form-control" type="text" :value="contractNo" readonly />
+            </div>
+          </div>
+          <div class="row g-3 p-3 justify-content-center align-items-center">
+            <div class="col-12 col-md-6">
               <label class="form-label">CUPS <span class="text-danger">*</span></label>
               <select class="form-select" v-model="cups" :disabled="loadingCups || !!loadError" 
                       :class="{ 'is-invalid': hasOverlap }">
@@ -611,7 +660,7 @@ function onRemove(key) { emit('remove', key) }
 
           <div class="row g-3 p-3 justify-content-center align-items-center">
             <div class="col-12 col-md-6">
-              <label class="form-label">Precio fijo acordado (OMIP) <span class="text-danger">*</span></label>
+              <label class="form-label">Precio referencia mercado (OMIP) <span class="text-danger">*</span></label>
               <div class="input-group">
                 <input class="form-control" type="number" inputmode="decimal" step="0.01" min="0" v-model="fixedPrice"
                   placeholder="Ej. 85.50" readonly />
@@ -632,6 +681,30 @@ function onRemove(key) { emit('remove', key) }
             <span v-if="isSubmitting">Enviando…</span>
             <span v-else>Aceptar y enviar</span>
           </button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- Modal simple para CUPS no disponible cuando multicups = false -->
+  <Teleport to="body">
+    <div v-if="show && showSimpleModal" class="mc-backdrop" aria-modal="true" role="dialog" @click.self="showSimpleModal = false; $emit('close')"
+      @keydown.esc="showSimpleModal = false; $emit('close')">
+      <div class="mc-modal" style="max-width: 500px;">
+        <div class="mc-header">
+          <h5 class="m-0">CUPS no disponible</h5>
+          <button type="button" class="btn-close" aria-label="Cerrar" @click="showSimpleModal = false; $emit('close')">×</button>
+        </div>
+
+        <div class="mc-body" style="padding: 2rem;">
+          <div class="text-center">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
+            <h6 class="mb-3">El CUPS {{ cups }} no está disponible</h6>
+            <p class="text-muted mb-4">{{ overlapError }}</p>
+            <button class="btn btn-primary" @click="showSimpleModal = false; $emit('close')">
+              Cerrar
+            </button>
+          </div>
         </div>
       </div>
     </div>

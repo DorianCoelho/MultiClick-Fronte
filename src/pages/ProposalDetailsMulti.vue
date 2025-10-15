@@ -43,7 +43,7 @@
                         }}</strong>
                         </div>
                         <div class="kv col-md-12 ms-3" v-if="(p.productType || '').toLowerCase() === 'index'">
-                            <span>FEE Energía</span><strong>{{ fmt2(p.feeEnergy) }}</strong>
+                            <span>FEE Energía</span><strong>{{ fmt2((p.feeEnergy || 0) / 1000) }}</strong>
                         </div>
                     </div>
                 </div>

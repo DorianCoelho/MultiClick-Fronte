@@ -2,9 +2,11 @@
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import config from '@/config/env'
+import packageJson from '../../package.json'
 
 // Importar logo dinámicamente
 const logo = new URL(config.LOGO_PATH, import.meta.url).href
+const version = packageJson.version
 
 const router = useRouter()
 const auth = useAuthStore()                     // 👈 instancia del store
@@ -49,10 +51,14 @@ const logout = async () => {
       <button class="btn btn-outline-secondary w-100" @click="goResetPassword">
         <i class="bi bi-key me-2"></i> Reset Password
       </button>
-
+      
       <button class="btn btn-outline-danger w-100" @click="logout">
         <i class="bi bi-box-arrow-right me-2"></i> Logout
       </button>
+      <div class="text-center text-muted mb-2" style="font-size: 0.75rem;">
+        v{{ version }}
+      </div>
+      
     </div>
   </aside>
 </template>

@@ -295,6 +295,34 @@ async function maybeShowFirstLoginModal () {
   }
 }
 
+/* Detectar tipo de dispositivo */
+function getDeviceType() {
+  const ua = navigator.userAgent || navigator.vendor || window.opera
+  
+  // Detectar iOS
+  if (/iPad|iPhone|iPod/.test(ua) && !window.MSStream) {
+    return /iPad/.test(ua) ? 'Tablet iOS' : 'Mobile iOS'
+  }
+  
+  // Detectar Android
+  if (/android/i.test(ua)) {
+    return /mobile/i.test(ua) ? 'Mobile Android' : 'Tablet Android'
+  }
+  
+  // Detectar tablet genérica
+  if (/(tablet|ipad|playbook|silk)|(android(?!.*mobi))/i.test(ua)) {
+    return 'Tablet'
+  }
+  
+  // Detectar móvil genérico
+  if (/Mobile|iP(hone|od)|Android|BlackBerry|IEMobile|Kindle|Silk-Accelerated|(hpw|web)OS|Opera M(obi|ini)/.test(ua)) {
+    return 'Mobile'
+  }
+  
+  // Por defecto, PC
+  return 'PC'
+}
+
 /* POST de aceptación */
 async function acceptEnergyProduct () {
   const ip = await getPublicIP();
@@ -303,7 +331,8 @@ async function acceptEnergyProduct () {
       userName: getUserName(),
       productNo: energyProduct.value?.no || energyProduct.value?.No || '',
       acceptanceDate: new Date().toISOString(),
-      acceptanceIPAddress: ip
+      acceptanceIPAddress: ip,
+      device: getDeviceType()
     }
     await api.post('/UserAcceptedProducts', payload)
 

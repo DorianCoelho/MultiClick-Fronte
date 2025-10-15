@@ -328,7 +328,8 @@ const series = ref([
 const colorOmip = '#ff9f43'
 const colorSelected = '#dc3545'
 const colorLow = '#198754'
-const colorUsed = '#9333ea'  // Morado para puntos ya utilizados
+const colorUsed = '#9333ea'  // Morado para puntos ya utilizados con estado "Aceptado"
+const colorUsedOther = '#ff6b35'  // Naranja para puntos con click vigente pero estado diferente de "Aceptado"
 
 function computeLowFive(keys, g) {
   return new Set(
@@ -426,9 +427,30 @@ const chartOptions = ref({
       
       // Si hay contrato, agregar footer de advertencia
       if (contract) {
-        html += `<div class="tooltip-footer">
-          <strong>⚠️ Este punto ya tiene un click vigente</strong><br/>
-          <small>CUPS: ${contract.cups} | Contrato: ${contract.contractNo}</small>
+        const contractStatus = contract.status
+        const blockingStates = ['Pendiente de aceptación', 'Aceptado', 'Sugerido']
+        const isBlockingState = blockingStates.includes(contractStatus)
+        const isLowPrice = lowFiveSet.has(monthKey)
+        
+        const message = isBlockingState 
+          ? '⚠️ Este punto ya tiene un click vigente' 
+          : '⚠️ Este punto ya tiene un Click'
+        const statusInfo = ` | Estado: ${contractStatus || 'N/A'}`
+        
+        // Color del fondo según el estado (morado si bloqueante, naranja si no)
+        const bgColor = isBlockingState 
+          ? 'linear-gradient(135deg, #7c3aed, #9333ea)' 
+          : 'linear-gradient(135deg, #ff6b35, #ff8c42)'
+        const borderColor = isBlockingState ? '#a855f7' : '#ff9f6b'
+        
+        // Si también es uno de los 5 precios más bajos, agregar nota sobre el borde
+        const borderNote = isLowPrice 
+          ? `<br/><small>🟢 5 precios más bajos | Borde ${isBlockingState ? 'morado' : 'naranja'} = Click vigente</small>`
+          : ''
+        
+        html += `<div class="tooltip-footer" style="background: ${bgColor}; border-top: 2px solid ${borderColor};">
+          <strong>${message}</strong><br/>
+          <small>CUPS: ${contract.cups} | Contrato: ${contract.contractNo}${statusInfo}</small>${borderNote}
         </div>`
       }
       
@@ -502,15 +524,52 @@ function getContractForMonth(monthKey) {
 function buildDiscreteMarkers(keys) {
   const disc = []
   keys.forEach((k, idx) => {
-    // Prioridad: Seleccionado > Bajo 5 > Usado
+    // Prioridad: Seleccionado > Verde con borde de contrato > Verde normal > Usado solo
     if (selectedSet.has(k)) {
       disc.push({ seriesIndex: 0, dataPointIndex: idx, fillColor: colorSelected, strokeColor: colorSelected, size: 8 })
-    } else if (isMonthUsed(k)) {
-      disc.push({ seriesIndex: 0, dataPointIndex: idx, fillColor: colorUsed, strokeColor: colorUsed, size: 8 })
     } else if (lowFiveSet.has(k)) {
-      disc.push({ seriesIndex: 0, dataPointIndex: idx, fillColor: colorLow, strokeColor: colorLow, size: 8 })
+      // Punto verde: verificar si también hay contrato
+      if (isMonthUsed(k)) {
+        // Hay punto verde Y contrato: punto más pequeño con borde más grueso
+        const contract = getContractForMonth(k)
+        const contractStatus = contract?.status
+        const blockingStates = ['Pendiente de aceptación', 'Aceptado', 'Sugerido']
+        const isBlockingState = blockingStates.includes(contractStatus)
+        
+        // Usar color morado si es bloqueante, naranja si no
+        const borderColor = isBlockingState ? colorUsed : colorUsedOther
+        disc.push({ 
+          seriesIndex: 0, 
+          dataPointIndex: idx, 
+          fillColor: colorLow, 
+          strokeColor: borderColor, 
+          strokeWidth: 5,
+          size: 7 
+        })
+      } else {
+        // Solo punto verde: borde blanco
+        disc.push({ 
+          seriesIndex: 0, 
+          dataPointIndex: idx, 
+          fillColor: colorLow, 
+          strokeColor: '#ffffff', 
+          strokeWidth: 3,
+          size: 10 
+        })
+      }
+    } else if (isMonthUsed(k)) {
+      // Solo punto usado (sin verde)
+      const contract = getContractForMonth(k)
+      const contractStatus = contract?.status
+      const blockingStates = ['Pendiente de aceptación', 'Aceptado', 'Sugerido']
+      const isBlockingState = blockingStates.includes(contractStatus)
+      
+      // Usar color morado si es bloqueante, naranja si no
+      const colorToUse = isBlockingState ? colorUsed : colorUsedOther
+      disc.push({ seriesIndex: 0, dataPointIndex: idx, fillColor: colorToUse, strokeColor: colorToUse, size: 8 })
     }
   })
+  
   return disc
 }
 
@@ -539,6 +598,8 @@ function onTogglePoint(cfg) {
 
   const idx = cfg.dataPointIndex
   const k = periodKeys.value[idx]
+  
+  // Permitir seleccionar cualquier punto (la validación se hace en el modal)
   
   if (selectedSet.has(k)) {
     // Si ya está seleccionado, deseleccionarlo
@@ -858,31 +919,35 @@ onMounted(async () => {
           <h5 class="card-title mb-0">MultiClick</h5>
           <small class="text-muted">Selecciona 1 punto de "OMIP Base".</small>
         </div>
-        <div>
-          <span class="badge text-dark">Datos orientativos de mercado</span>
-        </div>
       </div>
       <div class="card-body">
         <apexchart ref="chartRef" type="line" height="400" :options="chartOptions" :series="series" />
         
         <!-- Leyenda de colores -->
-        <div class="chart-legend mt-3">
-          <div class="legend-item">
-            <span class="legend-dot" style="background-color: #dc3545;"></span>
-            <span class="legend-text">Seleccionado</span>
-          </div>
+        <div class="chart-legend mt-3 d-flex justify-content-between align-items-center">
+          <div class="legend-items d-flex flex-wrap gap-3">
+            <div class="legend-item">
+              <span class="legend-dot" style="background-color: #dc3545;"></span>
+              <span class="legend-text">Seleccionado</span>
+            </div>
           <div class="legend-item">
             <span class="legend-dot" style="background-color: #9333ea;"></span>
-            <span class="legend-text">Click vigente</span>
+            <span class="legend-text">Click Aceptado</span>
           </div>
           <div class="legend-item">
-            <span class="legend-dot" style="background-color: #198754;"></span>
-            <span class="legend-text">5 precios más bajos</span>
+            <span class="legend-dot" style="background-color: #ff6b35;"></span>
+            <span class="legend-text">Click Pendientes</span>
           </div>
-          <div class="legend-item">
-            <span class="legend-dot" style="background-color: #ff9f43;"></span>
-            <span class="legend-text">Disponible</span>
+            <div class="legend-item">
+              <span class="legend-dot" style="background-color: #198754;"></span>
+              <span class="legend-text">5 precios más bajos</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot" style="background-color: #ff9f43;"></span>
+              <span class="legend-text">Disponible</span>
+            </div>
           </div>
+          <span class="badge text-dark ms-3">Datos orientativos de mercado</span>
         </div>
       </div>
     </div>
@@ -1336,13 +1401,14 @@ onMounted(async () => {
 
 /* ===================== Leyenda del gráfico ===================== */
 .chart-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
   padding: 0.75rem;
   background: #f8fafc;
   border-radius: 0.5rem;
   border: 1px solid #e5e7eb;
+}
+
+.legend-items {
+  gap: 1rem;
 }
 
 .legend-item {
