@@ -12,7 +12,7 @@ const router = useRouter()
 const auth = useAuthStore()                     // 👈 instancia del store
 
 const items = [
-  { name: 'Inicio', route: '/dashboard', icon: 'bi-house' },
+  //{ name: 'Inicio', route: '/dashboard', icon: 'bi-house' },
   //{ name: 'Usuario', route: '/users', icon: 'bi-people' },
   { name: 'Grafico', route: '/grafico', icon: 'bi-bar-chart' },
   { name: 'Propuestas', route: '/proposals', icon: 'bi-list' },
