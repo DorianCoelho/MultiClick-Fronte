@@ -477,44 +477,129 @@ const chartOptions = ref({
   }
 })
 
-// Función para verificar si un mes está ocupado por algún contrato
-function isMonthUsed(monthKey) {
-  // monthKey formato: "YYYY-MM"
-  const [year, month] = monthKey.split('-').map(Number)
-  const checkDate = new Date(year, month - 1, 1)
+// Función auxiliar para expandir cualquier periodo a sus meses componentes
+function expandPeriodToMonths(periodKey) {
+  // Si es mes (formato: "YYYY-MM")
+  if (/^\d{4}-\d{2}$/.test(periodKey)) {
+    return [periodKey]
+  }
   
-  // Verificar si este mes está dentro del rango de algún contrato
-  for (const contract of multiclickRows.value) {
-    if (!contract.startDate || !contract.endDate) continue
+  // Si es trimestre (formato: "YYYY-Q1")
+  if (/^\d{4}-Q[1-4]$/.test(periodKey)) {
+    const [year, q] = periodKey.split('-')
+    const qNum = Number(q.substring(1))
+    const startMonth = (qNum - 1) * 3 + 1
+    return [
+      `${year}-${pad2(startMonth)}`,
+      `${year}-${pad2(startMonth + 1)}`,
+      `${year}-${pad2(startMonth + 2)}`
+    ]
+  }
+  
+  // Si es semestre (formato: "YYYY-S1")
+  if (/^\d{4}-S[12]$/.test(periodKey)) {
+    const [year, s] = periodKey.split('-')
+    const startMonth = s === 'S1' ? 1 : 7
+    return [
+      `${year}-${pad2(startMonth)}`,
+      `${year}-${pad2(startMonth + 1)}`,
+      `${year}-${pad2(startMonth + 2)}`,
+      `${year}-${pad2(startMonth + 3)}`,
+      `${year}-${pad2(startMonth + 4)}`,
+      `${year}-${pad2(startMonth + 5)}`
+    ]
+  }
+  
+  // Si es año (formato: "YYYY")
+  if (/^\d{4}$/.test(periodKey)) {
+    const year = periodKey
+    return Array.from({ length: 12 }, (_, i) => `${year}-${pad2(i + 1)}`)
+  }
+  
+  return []
+}
+
+// Función para verificar si un periodo está ocupado por algún contrato
+function isMonthUsed(periodKey) {
+  // Expandir el periodo a todos sus meses
+  const months = expandPeriodToMonths(periodKey)
+  
+  // Si no hay meses o no hay contratos, no está ocupado
+  if (months.length === 0 || multiclickRows.value.length === 0) return false
+  
+  console.log(`🔍 Verificando periodo: ${periodKey}`)
+  console.log(`📅 Meses expandidos:`, months)
+  console.log(`📋 Contratos disponibles:`, multiclickRows.value.length)
+  
+  // Verificar si ALGUNO de los meses está ocupado
+  for (const monthKey of months) {
+    const [year, month] = monthKey.split('-').map(Number)
+    if (!year || !month) continue
     
-    const startDate = new Date(contract.startDate)
-    const endDate = new Date(contract.endDate)
+    // Crear fecha al inicio del mes (día 1)
+    const checkDate = new Date(year, month - 1, 1)
+    checkDate.setHours(0, 0, 0, 0)
     
-    // Verificar si checkDate está entre startDate y endDate
-    if (checkDate >= startDate && checkDate <= endDate) {
-      return true
+    // Verificar si este mes está dentro del rango de algún contrato
+    for (const contract of multiclickRows.value) {
+      if (!contract.startDate || !contract.endDate) continue
+      
+      // Parsear fechas del contrato y normalizar a inicio de mes
+      const startDate = new Date(contract.startDate)
+      startDate.setHours(0, 0, 0, 0)
+      const endDate = new Date(contract.endDate)
+      endDate.setHours(23, 59, 59, 999)
+      
+      console.log(`  ⏰ Comparando ${monthKey} con contrato ${contract.contractNo}:`, {
+        check: checkDate.toISOString().split('T')[0],
+        start: startDate.toISOString().split('T')[0],
+        end: endDate.toISOString().split('T')[0],
+        overlaps: checkDate >= startDate && checkDate <= endDate
+      })
+      
+      // Verificar si checkDate está dentro del rango del contrato
+      if (checkDate >= startDate && checkDate <= endDate) {
+        console.log(`  ✅ OCUPADO por contrato: ${contract.contractNo}`)
+        return true
+      }
     }
   }
   
+  console.log(`  ❌ No ocupado`)
   return false
 }
 
-// Función para obtener el contrato de un mes específico
-function getContractForMonth(monthKey) {
-  // monthKey formato: "YYYY-MM"
-  const [year, month] = monthKey.split('-').map(Number)
-  const checkDate = new Date(year, month - 1, 1)
+// Función para obtener el contrato de un periodo específico
+function getContractForMonth(periodKey) {
+  // Expandir el periodo a todos sus meses
+  const months = expandPeriodToMonths(periodKey)
   
-  // Buscar el contrato que incluye este mes
-  for (const contract of multiclickRows.value) {
-    if (!contract.startDate || !contract.endDate) continue
+  // Si no hay meses o no hay contratos, retornar null
+  if (months.length === 0 || multiclickRows.value.length === 0) return null
+  
+  // Buscar el contrato en el primer mes ocupado
+  for (const monthKey of months) {
+    const [year, month] = monthKey.split('-').map(Number)
+    if (!year || !month) continue
     
-    const startDate = new Date(contract.startDate)
-    const endDate = new Date(contract.endDate)
+    // Crear fecha al inicio del mes (día 1)
+    const checkDate = new Date(year, month - 1, 1)
+    checkDate.setHours(0, 0, 0, 0)
     
-    // Verificar si checkDate está entre startDate y endDate
-    if (checkDate >= startDate && checkDate <= endDate) {
-      return contract
+    // Buscar el contrato que incluye este mes
+    for (const contract of multiclickRows.value) {
+      if (!contract.startDate || !contract.endDate) continue
+      
+      // Parsear fechas del contrato y normalizar
+      const startDate = new Date(contract.startDate)
+      startDate.setHours(0, 0, 0, 0)
+      const endDate = new Date(contract.endDate)
+      endDate.setHours(23, 59, 59, 999)
+      
+      // Verificar si checkDate está dentro del rango del contrato
+      if (checkDate >= startDate && checkDate <= endDate) {
+        return contract
+      }
     }
   }
   
@@ -887,7 +972,7 @@ onMounted(async () => {
 
       <div class="controls-group">
         <div class="control-item">
-          <span class="control-label">Granularidad:</span>
+          <span class="control-label"></span>
           <div class="btn-group">
             <button class="btn btn-outline-secondary" :class="{ active: gran === 'M' }" @click="setGran('M')">Mes</button>
             <button class="btn btn-outline-secondary" :class="{ active: gran === 'Q' }"
@@ -895,19 +980,6 @@ onMounted(async () => {
             <button class="btn btn-outline-secondary" :class="{ active: gran === 'S' }"
               @click="setGran('S')">Semestre</button>
             <button class="btn btn-outline-secondary" :class="{ active: gran === 'Y' }" @click="setGran('Y')">Año</button>
-          </div>
-        </div>
-
-        <!-- Duración click: siempre visible -->
-        <div class="control-item">
-          <span class="control-label">Duración click:</span>
-          <div class="btn-group" role="group" aria-label="Período cubierto">
-            <button class="btn btn-outline-secondary" :class="{ active: periodTarget === 'Q' }"
-              @click="periodTarget = 'Q'">Trimestre</button>
-            <button class="btn btn-outline-secondary" :class="{ active: periodTarget === 'S' }"
-              @click="periodTarget = 'S'">Semestre</button>
-            <button class="btn btn-outline-secondary" :class="{ active: periodTarget === 'Y' }"
-              @click="periodTarget = 'Y'">Año</button>
           </div>
         </div>
       </div>
@@ -968,7 +1040,7 @@ onMounted(async () => {
                 <th>CUPS</th>
                 <th>No. referencia operación</th>
                 <th>Tarifa</th>
-                <th>Precio Sel.</th>
+                
                 <th>Fee</th>
                 <th>Duración</th>
                 <th>Inicio</th>
@@ -986,7 +1058,7 @@ onMounted(async () => {
                 <td class="mono">{{ r.cups }}</td>
                 <td class="mono">{{ r.refApplicationOperNo }}</td>
                 <td>{{ r.rateNo }}</td>
-                <td class="mono">{{ fmtNum(r.selectedPrice) }}</td>
+                
                 <td class="mono">{{ fmtNum(r.feeEnergy) }}</td>
                 <td>{{ r.duration }}</td>
                 <td>{{ fmtDate(r.startDate) }}</td>
