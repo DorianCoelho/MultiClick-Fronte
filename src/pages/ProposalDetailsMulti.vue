@@ -77,7 +77,7 @@
                             <div class="kv"><span>Nombre</span><strong>{{ p.agentName || '—' }}</strong></div>
 
                             <template v-if="p.feeGroupId">
-                                <div class="kv"><span>Grupo</span><strong>{{ p.feeGroupId }}</strong></div>
+                                <!-- <div class="kv"><span>Grupo</span><strong>{{ p.feeGroupId }}</strong></div> -->
                             </template>
                             <template v-else>
                                 <h4 class="sec mt-sm">Fee aplicados</h4>
