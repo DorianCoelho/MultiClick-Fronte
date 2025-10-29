@@ -14,10 +14,10 @@ const auth = useAuthStore()                     // 👈 instancia del store
 const items = [
   { name: 'Inicio', route: '/dashboard', icon: 'bi-house' },
   //{ name: 'Usuario', route: '/users', icon: 'bi-people' },
-  { name: 'Grafico', route: '/grafico', icon: 'bi-bar-chart' },
+  { name: 'Multiclick', route: '/grafico', icon: 'bi-bar-chart' },
   { name: 'Propuestas', route: '/proposals', icon: 'bi-list' },
   { name: 'Contratos', route: '/contracts', icon: 'bi-file-earmark-text' },
-  { name: 'MultiClick', route: '/suggestions', icon: 'bi-lightbulb' },
+  { name: 'Propuestas pendientes', route: '/suggestions', icon: 'bi-lightbulb' },
   { name: 'Cups', route: '/cups', icon: 'bi-plug' }
 ]
 
