@@ -43,7 +43,12 @@ const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 
-const form = reactive({ email: '', password: '' })
+const form = reactive({ 
+  email: '', 
+  password: '', 
+  marketCode: config.MARKETER 
+})
+
 const loading = ref(false)
 const error = ref('')
 

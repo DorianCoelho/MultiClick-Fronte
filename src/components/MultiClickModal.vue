@@ -692,15 +692,15 @@ function onRemove(key) { emit('remove', key) }
       @keydown.esc="showSimpleModal = false; $emit('close')">
       <div class="mc-modal" style="max-width: 500px;">
         <div class="mc-header">
-          <h5 class="m-0">CUPS no disponible</h5>
+          <h5 class="m-0">Click aplicado para este período y CUPS</h5>
           <button type="button" class="btn-close" aria-label="Cerrar" @click="showSimpleModal = false; $emit('close')">×</button>
         </div>
 
         <div class="mc-body" style="padding: 2rem;">
           <div class="text-center">
-            <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
-            <h6 class="mb-3">El CUPS {{ cups }} no está disponible</h6>
-            <p class="text-muted mb-4">{{ overlapError }}</p>
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🎯</div>
+            <h6 class="mb-3">Ya has fijado precio para este mismo periodo con tu CUPS {{ cups }}</h6>
+            <!-- <p class="text-muted mb-4">{{ overlapError }}</p> -->
             <button class="btn btn-primary" @click="showSimpleModal = false; $emit('close')">
               Cerrar
             </button>

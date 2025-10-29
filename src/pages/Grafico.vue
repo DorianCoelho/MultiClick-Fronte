@@ -1040,7 +1040,7 @@ onMounted(async () => {
                 <th>CUPS</th>
                 <th>No. referencia operación</th>
                 <th>Tarifa</th>
-                
+                <th class="text-center">Precio Referencia OMIP</th>
                 <th>Fee</th>
                 <th>Duración</th>
                 <th>Inicio</th>
@@ -1058,7 +1058,7 @@ onMounted(async () => {
                 <td class="mono">{{ r.cups }}</td>
                 <td class="mono">{{ r.refApplicationOperNo }}</td>
                 <td>{{ r.rateNo }}</td>
-                
+                <td class="mono">{{ fmtNum(r.selectedPrice) }}</td>
                 <td class="mono">{{ fmtNum(r.feeEnergy) }}</td>
                 <td>{{ r.duration }}</td>
                 <td>{{ fmtDate(r.startDate) }}</td>

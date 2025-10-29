@@ -307,7 +307,7 @@ onMounted(() => window.addEventListener('keydown', onKey))
   <DashboardLayout>
     <div class="page">
       <header class="header">
-        <h1>MultiClick</h1>
+        <h1>Propuestas pendientes</h1>
         <p class="muted">Listado Contratos de Multiclick</p>
       </header>
 
