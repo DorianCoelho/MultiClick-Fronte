@@ -529,7 +529,7 @@ function onSubmit() {
     customerNo: String(props.customerNo),
     customerCups: cups.value,
     periodType: periodType.value,
-    fixedPriceOmip: basePrice + fee,                               // Precio base + fee energy
+    fixedPriceOmip: basePrice,                               // Precio base + fee energy
     periodKeys: props.points.map(p => `${p.key}-01`),
     volumeMw: 0,
     startMonth: startMonth.value ? `${startMonth.value}-01` : '',   // Fecha mes inicio (YYYY-MM-01)
