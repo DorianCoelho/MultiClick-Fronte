@@ -968,7 +968,7 @@ onMounted(async () => {
 <template>
   <DashboardLayout>
     <div class="header-controls mb-3">
-      <h1 class="h4 mb-0">MultiClick · Gráfico</h1>
+      <h1 class="h4 mb-0">¡Congela tu precio de luz!</h1>
 
       <div class="controls-group">
         <div class="control-item">
@@ -988,7 +988,7 @@ onMounted(async () => {
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
         <div>
-          <h5 class="card-title mb-0">MultiClick</h5>
+          <h5 class="card-title mb-0">Gráfico tendencia mercado</h5>
           <small class="text-muted">Selecciona 1 punto de "OMIP Base".</small>
         </div>
       </div>
