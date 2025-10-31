@@ -944,9 +944,11 @@ async function approve(row) {
     await api.get('/v1/MultiClick/UpdateMultiClickEnergyContractAsync', {
       params: {
         multiclickDocumentType: row.multiClickDocumentType,
+        multiclickDocumentNo: row.multiClickDocumentNo,
         customerNo: row.customerNo,
         contractNo: row.contractNo,
-        cups: row.cups
+        cups: row.cups,
+        startDate: row.startDate
       }
     })
     showToast('MultiClick aprobado correctamente.', 'success')
@@ -1077,12 +1079,12 @@ onMounted(async () => {
                       </svg>
                     </button>
 
-                    <button class="btn-ghost btn-ghost-custom" 
+                    <!-- <button class="btn-ghost btn-ghost-custom" 
                       :disabled="!isSugerido(r.status) || approving.has(`${r.customerNo}|${r.contractNo}|${r.cups}`)"
                       @click="approve(r)"
                       :title="isSugerido(r.status) ? 'Aprobar' : 'Solo disponible si el estado es Sugerido'">
                       {{ approving.has(`${r.customerNo}|${r.contractNo}|${r.cups}`) ? 'Enviando…' : 'Aprobar' }}
-                    </button>
+                    </button> -->
                   </div>
                 </td>
               </tr>
