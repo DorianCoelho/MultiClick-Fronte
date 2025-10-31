@@ -176,9 +176,11 @@ async function approve(row) {
     await api.get('/v1/MultiClick/UpdateMultiClickEnergyContractAsync', {
       params: {
         multiclickDocumentType: row.multiClickDocumentType,
+        multiclickDocumentNo: row.multiClickDocumentNo,
         customerNo: row.customerNo,
         contractNo: row.contractNo,
-        cups: row.cups
+        cups: row.cups,
+        startDate: row.startDate
       }
     })
     showToast('MultiClick aprobado correctamente.', 'success')
