@@ -1060,8 +1060,8 @@ onMounted(async () => {
                 <td class="mono">{{ r.cups }}</td>
                 <td class="mono">{{ r.refApplicationOperNo }}</td>
                 <td>{{ r.rateNo }}</td>
-                <td class="mono">{{ fmtNum(r.selectedPrice) }}</td>
-                <td class="mono">{{ fmtNum(r.feeEnergy) }}</td>
+                <td class="mono text-center">{{ fmtNum(r.selectedPrice) }}</td>
+                <!-- <td class="mono">{{ fmtNum(r.feeEnergy) }}</td> -->
                 <td>{{ r.duration }}</td>
                 <td>{{ fmtDate(r.startDate) }}</td>
                 <td>{{ fmtDate(r.endDate) }}</td>
