@@ -6,6 +6,9 @@ export const config = {
   // API Base URL
   API_BASE_URL: import.meta.env.VITE_API_BASE_URL || 'https://beta-omip-httpapi.sucapp.com/api',
   
+  // API key utilizada en validaciones de cambio de contraseña
+  API_KEY: import.meta.env.VITE_API_KEY || 'a4b473fb5f7442cbb20d7aaeddd5c39a',
+  
   // Logo y Branding
   LOGO_PATH: import.meta.env.VITE_LOGO_PATH || '/src/assets/images/Logo_nabalia.svg',
   
