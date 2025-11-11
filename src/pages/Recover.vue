@@ -15,8 +15,8 @@
             <router-link :to="{ name: 'login' }">Volver al login</router-link>
           </div>
           <p v-if="error" class="text-danger mt-3 mb-0">{{ error }}</p>
-          <p v-if="ok" class="text-success mt-3 mb-0">
-            Si el email existe, recibirás instrucciones para restablecer tu contraseña.
+          <p v-if="okMessage" class="text-success mt-3 mb-0">
+            {{ okMessage }}
           </p>
         </form>
       </div>
@@ -32,17 +32,19 @@ const auth = useAuthStore()
 const email = ref('')
 const loading = ref(false)
 const error = ref('')
-const ok = ref(false)
+const okMessage = ref('')
 
 async function submit() {
   loading.value = true
   error.value = ''
-  ok.value = false
+  okMessage.value = ''
   try {
-    await auth.recover(email.value)
-    ok.value = true
+    const data = await auth.recover(email.value)
+    okMessage.value =
+      data?.message || 'Se ha enviado un email con las instrucciones.'
   } catch (e) {
-    error.value = e?.response?.data?.message || 'Error al solicitar recuperación'
+    error.value =
+      e?.response?.data?.message || 'Error al solicitar recuperación'
   } finally {
     loading.value = false
   }

@@ -8,6 +8,8 @@ import Dashboard from '@/pages/Dashboard.vue'
 import Suggestions from '@/pages/Suggestions.vue'
 import Grafico from '@/pages/Grafico.vue'
 import ResetPassword from '@/pages/ResetPassword.vue'
+import ChangePasswordValidator from '@/pages/ChangePasswordValidator.vue'
+import ChangePasswordForm from '@/pages/ChangePasswordForm.vue'
 import Cups from '@/pages/Cups.vue'
 import ProposalDetails from '@/pages/ProposalDetails.vue'
 import ProposalDetailsMulti from '@/pages/ProposalDetailsMulti.vue'
@@ -33,6 +35,8 @@ const routes = [
   { path: '/proposals/:proposalId',  name: 'ProposalDetails',  component: ProposalDetails,  meta: { requiresAuth: true } },
   { path: '/proposals-multi/:proposalId',  name: 'ProposalDetailsMulti',  component: ProposalDetailsMulti,  meta: { requiresAuth: true } },
   { path: '/contracts', name: 'Contracts', component: Contracts, meta: { requiresAuth: true } },
+  { path: '/change-password-validator/:token(.*)', name: 'change-password-validator', component: ChangePasswordValidator },
+  { path: '/change-password', name: 'change-password-form', component: ChangePasswordForm },
 
 
   // 404 → a login (o crea una página 404 si prefieres)
