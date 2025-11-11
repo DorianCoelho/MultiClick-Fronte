@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 
@@ -23,6 +22,10 @@ const customerNo = computed(() =>
 const currentPassword = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
+
+const showCurrentPassword = ref(false)
+const showNewPassword = ref(false)
+const showConfirmPassword = ref(false)
 
 const loading = ref(false)
 const errorMsg = ref('')
@@ -83,7 +86,7 @@ async function submit() {
 <template>
   <DashboardLayout>
     <div class="row justify-content-center">
-      <div class="col-12 col-md-8 col-lg-6">
+      <div class="col-12 col-md-6 col-lg-4">
         <div class="card">
           <div class="card-header">
             <h5 class="mb-0">Restablecer contraseña</h5>
@@ -95,34 +98,61 @@ async function submit() {
               <code>{{ userName || '—' }}</code>
             </div>
 
-            <div class="mb-3">
+            <div class="mb-3 small-input">
               <label class="form-label">Contraseña actual</label>
-              <input
-                type="password"
-                class="form-control"
-                v-model="currentPassword"
-                autocomplete="current-password" />
+              <div class="input-group password-input">
+                <input
+                  :type="showCurrentPassword ? 'text' : 'password'"
+                  class="form-control"
+                  v-model="currentPassword"
+                  autocomplete="current-password" />
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm"
+                  @click="showCurrentPassword = !showCurrentPassword"
+                  :aria-label="showCurrentPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'">
+                  <i :class="showCurrentPassword ? 'bi bi-eye-slash' : 'bi bi-eye'"></i>
+                </button>
+              </div>
             </div>
 
-            <div class="mb-3">
+            <div class="mb-3 small-input">
               <label class="form-label">Nueva contraseña</label>
-              <input
-                type="password"
-                class="form-control"
-                v-model="newPassword"
-                autocomplete="new-password" />
+              <div class="input-group password-input">
+                <input
+                  :type="showNewPassword ? 'text' : 'password'"
+                  class="form-control"
+                  v-model="newPassword"
+                  autocomplete="new-password" />
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm"
+                  @click="showNewPassword = !showNewPassword"
+                  :aria-label="showNewPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'">
+                  <i :class="showNewPassword ? 'bi bi-eye-slash' : 'bi bi-eye'"></i>
+                </button>
+              </div>
               <div class="form-text">
                 Mín. 8 caracteres, con mayúsculas, minúsculas, dígitos y un carácter especial.
               </div>
             </div>
 
-            <div class="mb-3">
+            <div class="mb-3 small-input">
               <label class="form-label">Confirmar nueva contraseña</label>
-              <input
-                type="password"
-                class="form-control"
-                v-model="confirmPassword"
-                autocomplete="new-password" />
+              <div class="input-group password-input">
+                <input
+                  :type="showConfirmPassword ? 'text' : 'password'"
+                  class="form-control"
+                  v-model="confirmPassword"
+                  autocomplete="new-password" />
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm"
+                  @click="showConfirmPassword = !showConfirmPassword"
+                  :aria-label="showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'">
+                  <i :class="showConfirmPassword ? 'bi bi-eye-slash' : 'bi bi-eye'"></i>
+                </button>
+              </div>
             </div>
 
             <div v-if="errorMsg" class="alert alert-danger py-2">{{ errorMsg }}</div>
@@ -139,3 +169,17 @@ async function submit() {
     </div>
   </DashboardLayout>
 </template>
+
+<style scoped>
+.small-input {
+  max-width: 320px;
+}
+
+.password-input .btn {
+  min-width: 2.25rem;
+}
+
+.password-input .btn i {
+  pointer-events: none;
+}
+</style>

@@ -28,8 +28,8 @@ export const useAuthStore = defineStore('auth', {
       await api.post('/auth/register', payload)
     },
     async recover(email) {
-      // Ajusta endpoint (ej. POST /auth/recover)
-      await api.post('/auth/recover', { email })
+      const { data } = await api.post('/Auth/recover', { email })
+      return data
     },
     logout() {
       this.token = null
