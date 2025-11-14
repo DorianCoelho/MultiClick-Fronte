@@ -235,13 +235,13 @@ onMounted(() => {
       </div>
 
       <div class="card-footer d-flex justify-content-end gap-2">
-        <button
+        <!-- <button
           class="btn btn-outline-secondary"
           :disabled="loading"
           @click="router.push({ name: 'login' })"
         >
           Volver a iniciar sesión
-        </button>
+        </button> -->
         <button
           v-if="tokenData && !errorMsg"
           class="btn btn-primary"
