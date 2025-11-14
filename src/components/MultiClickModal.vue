@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue'
 import api from '@/services/api'
+import config from '@/config/env'
 
 const isSubmitting = ref(false)
 let submitTimerId = null
@@ -17,8 +18,6 @@ const props = defineProps({
   feeEnergy: { type: Number, default: 0 }  // Fee energy del contrato
 })
 const emit = defineEmits(['close', 'submit', 'remove'])
-
-const MARKETER = 'NAB' // ajusta si tu back necesita otro
 
 const cups = ref('')
 const cupsOptions = ref([])
@@ -321,7 +320,7 @@ async function loadCups() {
   loadingCups.value = true
   try {
     const { data } = await api.get('/v1/ContractCliente/LastContractIndex', {
-      params: { customerNo: String(props.customerNo), marketer: MARKETER }
+      params: { customerNo: String(props.customerNo), marketer: config.MARKETER }
     })
 
 
