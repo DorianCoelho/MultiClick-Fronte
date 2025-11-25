@@ -772,10 +772,14 @@ function onRemovePoint(key) {
 }
 
 async function onSubmitModal(payload) {
+  console.log('📤 Enviando SendProposalByUser con los siguientes datos:', JSON.stringify(payload, null, 2))
+  console.log('📊 Detalle del payload:', payload)
   try {
     const res = await api.post('/v1/MultiClick/SendProposalByUser', payload, {
       headers: { 'Content-Type': 'application/json' }
     })
+
+    console.log('✅ Respuesta del servidor:', res.data)
 
     if (res.data.success) {
       showToast(`Orden de compra creada con éxito Nº ${res.data.contractNo}`, 'success')
@@ -786,10 +790,24 @@ async function onSubmitModal(payload) {
       // Recargar la lista de contratos
       await loadMultiClickContracts()
     } else {
-      showToast(`Error: ${res.data.error || 'Error desconocido'}`, 'error')
+      console.error('❌ Error en respuesta:', res.data)
+      showToast(`Error: ${res.data.error || res.data.message || 'Error desconocido'}`, 'error')
     }
   } catch (e) {
-    showToast(e?.response?.data?.error || 'Ocurrió un error inesperado', 'error')
+    console.error('❌ Error completo:', e)
+    console.error('❌ Error response:', e?.response)
+    console.error('❌ Error data:', e?.response?.data)
+    console.error('❌ Error message:', e?.message)
+    
+    // Intentar obtener el mensaje de error de diferentes lugares
+    const errorMessage = 
+      e?.response?.data?.error || 
+      e?.response?.data?.message || 
+      e?.response?.data?.Message ||
+      e?.message || 
+      'Ocurrió un error inesperado'
+    
+    showToast(`Error: ${errorMessage}`, 'error')
   }
 }
 

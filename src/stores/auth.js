@@ -28,7 +28,7 @@ export const useAuthStore = defineStore('auth', {
       await api.post('/auth/register', payload)
     },
     async recover(email) {
-      const { data } = await api.post('/Auth/recover', { email })
+      const { data } = await api.post('/Auth/recover', { email, marketerNo: config.MARKETER })
       return data
     },
     logout() {

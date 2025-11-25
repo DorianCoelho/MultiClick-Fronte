@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
+import config from '@/config/env'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -65,7 +66,8 @@ async function submit() {
       userName: customerNo.value,
       currentPassword: currentPassword.value,
       newPassword: newPassword.value,
-      confirmPassword: confirmPassword.value
+      confirmPassword: confirmPassword.value,
+      marketerNo: config.MARKETER
     })
 
     // Marca el “primer login” como completado
