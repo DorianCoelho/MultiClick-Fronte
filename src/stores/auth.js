@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
 import api from '@/services/api'
+import config from '@/config/env'
+
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
