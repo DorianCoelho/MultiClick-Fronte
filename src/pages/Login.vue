@@ -46,7 +46,7 @@ const route = useRoute()
 const form = reactive({ 
   email: '', 
   password: '', 
-  marketCode: config.MARKETER 
+  marketerNo: config.MARKETER 
 })
 
 const loading = ref(false)

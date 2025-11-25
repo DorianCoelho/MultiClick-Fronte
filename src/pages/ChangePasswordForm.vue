@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/services/api'
+import config from '@/config/env'
 
 const STORAGE_KEY = 'change-password-token-data'
 const TEN_MINUTES_MS = 10 * 60 * 1000
@@ -113,7 +114,8 @@ async function submit() {
       userName: userIdentifier.value,
       currentPassword: currentPassword.value,
       newPassword: newPassword.value,
-      confirmPassword: confirmPassword.value
+      confirmPassword: confirmPassword.value,
+      marketerNo: config.MARKETER
     })
 
     const backendMessage = data?.message || 'Contraseña actualizada correctamente.'
@@ -235,13 +237,13 @@ onMounted(() => {
       </div>
 
       <div class="card-footer d-flex justify-content-end gap-2">
-        <button
+        <!-- <button
           class="btn btn-outline-secondary"
           :disabled="loading"
           @click="router.push({ name: 'login' })"
         >
           Volver a iniciar sesión
-        </button>
+        </button> -->
         <button
           v-if="tokenData && !errorMsg"
           class="btn btn-primary"
