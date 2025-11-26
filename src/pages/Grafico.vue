@@ -822,6 +822,7 @@ async function loadMultiClickContracts() {
     const { data } = await api.get('/v1/MultiClick/GetMultiClickEnergyContract', {
       params: {
         customerNo: customerNo.value,
+        marketerNo: config.MARKETER,
         pageNumber: 1,
         pageSize: 50
       }
@@ -1061,7 +1062,7 @@ onMounted(async () => {
                 <th>No. referencia operación</th>
                 <th>Tarifa</th>
                 <th class="text-center">Precio Referencia OMIP</th>
-                <th>Fee</th>
+                <!-- <th>Fee</th> -->
                 <th>Duración</th>
                 <th>Inicio</th>
                 <th>Fin</th>
@@ -1097,12 +1098,12 @@ onMounted(async () => {
                       </svg>
                     </button>
 
-                    <!-- <button class="btn-ghost btn-ghost-custom" 
+                    <button class="btn-ghost btn-ghost-custom" 
                       :disabled="!isSugerido(r.status) || approving.has(`${r.customerNo}|${r.contractNo}|${r.cups}`)"
                       @click="approve(r)"
                       :title="isSugerido(r.status) ? 'Aprobar' : 'Solo disponible si el estado es Sugerido'">
                       {{ approving.has(`${r.customerNo}|${r.contractNo}|${r.cups}`) ? 'Enviando…' : 'Aprobar' }}
-                    </button> -->
+                    </button> 
                   </div>
                 </td>
               </tr>
