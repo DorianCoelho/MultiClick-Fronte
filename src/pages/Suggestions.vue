@@ -3,6 +3,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
+import config from '@/config/env'
 
 /* ============ Auth / customerNo oculto ============ */
 const auth = useAuthStore()
@@ -117,6 +118,7 @@ async function load() {
       params: {
         customerNo: customerNo.value,
         contractNo: contractNo || undefined,  // 👈 solo si tiene valor
+        marketerNo: config.MARKETER,
         cups: cups || undefined,              // 👈 solo si tiene valor
         status: status.value || undefined,    // 👈 igual aquí
         orderBy,
