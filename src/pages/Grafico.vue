@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
 import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import api from '@/services/api'
 import MultiClickModal from '@/components/MultiClickModal.vue'
@@ -34,6 +34,7 @@ const pdfUrl = ref(null)
 const pdfLoading = ref(false)
 const pdfError = ref('')
 const currentPdfId = ref(null)
+const pdfLoadingRows = reactive(new Set()) // Para rastrear qué fila está cargando
 
 /* ===================== Aprobar MultiClick ===================== */
 const approving = reactive(new Set())
@@ -350,6 +351,37 @@ function labelsForGran(g, keys) {
   return keys
 }
 
+// Función para ajustar las categorías cuando solo se muestran series históricas
+function adjustCategoriesForHistoricalOnly(keys, g, isOmipBaseVisible) {
+  // Si OMIP Base está visible, usar las categorías normales
+  if (isOmipBaseVisible) {
+    return labelsForGran(g, keys)
+  }
+  
+  // Si solo están visibles las series históricas, desplazar las fechas -5 años para reorganizar las fechas
+  const shiftedKeys = keys.map(k => {
+    if (/^\d{4}-\d{2}$/.test(k)) {
+      // Mes: YYYY-MM -> (YYYY-5)-MM
+      const [y, m] = k.split('-')
+      return `${Number(y) - 5}-${m}`
+    } else if (/^\d{4}-Q[1-4]$/.test(k)) {
+      // Trimestre: YYYY-Q1 -> (YYYY-5)-Q1
+      const [y, q] = k.split('-')
+      return `${Number(y) - 5}-${q}`
+    } else if (/^\d{4}-S[12]$/.test(k)) {
+      // Semestre: YYYY-S1 -> (YYYY-5)-S1
+      const [y, s] = k.split('-')
+      return `${Number(y) - 5}-${s}`
+    } else if (/^\d{4}$/.test(k)) {
+      // Año: YYYY -> (YYYY-5)
+      return String(Number(k) - 5)
+    }
+    return k
+  })
+  
+  return labelsForGran(g, shiftedKeys)
+}
+
 const chartOptions = ref({
   chart: {
     id: 'multiclick',
@@ -389,6 +421,11 @@ const chartOptions = ref({
         // Permitir toggle manualmente
         console.log('✅ Toggle permitido para serie:', w.globals.seriesNames[seriesIndex])
         chartContext.toggleSeries(w.globals.seriesNames[seriesIndex])
+        
+        // Actualizar categorías después del toggle
+        nextTick(() => {
+          updateCategoriesBasedOnVisibility()
+        })
       }
     }
   },
@@ -667,6 +704,9 @@ function rebuildChart() {
     { name: 'OMIE (-5 años)', data: keys.map(k => aggregateForPeriodShifted(k, gran.value, omieMap, -5)) },
     { name: 'OMIP Hist (-5 años)', data: keys.map(k => aggregateForPeriodShifted(k, gran.value, oldMap, -5)) }
   ]
+  
+  // Por defecto, OMIP Base está visible, así que usamos categorías normales
+  // Se actualizarán automáticamente cuando cambie la visibilidad
   chartOptions.value = {
     ...chartOptions.value,
     xaxis: { categories: labelsForGran(gran.value, keys) },
@@ -674,6 +714,39 @@ function rebuildChart() {
   }
   // Enabling/disabling enviar
   btnDisabled.value = !Array.from(selectedSet).some(k => keys.includes(k))
+  
+  // Actualizar categorías después de que ApexCharts se renderice
+  nextTick(() => {
+    if (chartRef.value && chartRef.value.chart) {
+      updateCategoriesBasedOnVisibility()
+    }
+  })
+}
+
+// Función para actualizar las categorías según la visibilidad de las series
+function updateCategoriesBasedOnVisibility() {
+  if (!chartRef.value || !chartRef.value.chart) return
+  
+  const chart = chartRef.value.chart
+  const w = chart.w
+  const collapsed = w.globals.collapsedSeriesIndices || []
+  const isOmipBaseVisible = !collapsed.includes(0)
+  
+  // Solo ajustar si OMIP Base no está visible
+  if (!isOmipBaseVisible) {
+    const keys = periodKeys.value
+    const adjustedCategories = adjustCategoriesForHistoricalOnly(keys, gran.value, false)
+    chart.updateOptions({
+      xaxis: { categories: adjustedCategories }
+    })
+  } else {
+    // Si OMIP Base está visible, usar categorías normales
+    const keys = periodKeys.value
+    const normalCategories = labelsForGran(gran.value, keys)
+    chart.updateOptions({
+      xaxis: { categories: normalCategories }
+    })
+  }
 }
 
 function onTogglePoint(cfg) {
@@ -902,7 +975,7 @@ function base64ToBlobUrl(base64, mime = 'application/pdf') {
 }
 
 async function fetchPdfBase64ById(id) {
-  const url = `/v1/ProposalCliente/ProposalPdf/${encodeURIComponent(id)}/false`
+  const url = `/v1/MultiClick/GetPdf/${encodeURIComponent(id)}`
   const { data } = await api.get(url, { responseType: 'text' })
   let base64 = typeof data === 'string' ? data : (data && data.base64) || ''
   if (!base64) throw new Error('PDF vacío')
@@ -913,10 +986,14 @@ async function fetchPdfBase64ById(id) {
 }
 
 async function openPdfModal(row) {
-  if (pdfLoading.value) return
   const id = getRowPdfId(row)
   if (!id) { showToast('No hay identificador de PDF para esta fila.', 'error'); return }
+  
+  // Usar multiClickDocumentNo como clave única para esta fila específica
+  const key = id
+  if (pdfLoadingRows.has(key)) return
 
+  pdfLoadingRows.add(key)
   pdfLoading.value = true
   pdfError.value = ''
   currentPdfId.value = id
@@ -935,6 +1012,7 @@ async function openPdfModal(row) {
     showPdf.value = true
   } finally {
     pdfLoading.value = false
+    pdfLoadingRows.delete(key)
   }
 }
 
@@ -1090,11 +1168,20 @@ onMounted(async () => {
                 <td class="text-end">
                   <div class="actions actions--end">
                     <!-- Ver PDF en modal -->
-                    <button class="icon-btn" title="Ver PDF" @click="openPdfModal(r)">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <button 
+                      class="icon-btn" 
+                      :class="{ 'loading': pdfLoadingRows.has(r.multiClickDocumentNo) }"
+                      :disabled="pdfLoadingRows.has(r.multiClickDocumentNo)"
+                      :title="pdfLoadingRows.has(r.multiClickDocumentNo) ? 'Cargando PDF...' : 'Ver PDF'" 
+                      @click="openPdfModal(r)">
+                      <svg v-if="!pdfLoadingRows.has(r.multiClickDocumentNo)" width="18" height="18" viewBox="0 0 24 24" fill="none">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" stroke="currentColor"
                           stroke-width="2" fill="none" />
                         <path d="M14 2v6h6" stroke="currentColor" stroke-width="2" fill="none" />
+                      </svg>
+                      <svg v-else class="spinner" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="31.416" stroke-dashoffset="31.416" fill="none" opacity="0.3"/>
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="31.416" stroke-dashoffset="23.562" fill="none"/>
                       </svg>
                     </button>
 
@@ -1384,6 +1471,13 @@ onMounted(async () => {
 }
 .icon-btn:hover:not(:disabled) {
   background: #f8fafc;
+}
+.icon-btn .spinner {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 .spin {
   animation: spin 1s linear infinite;
