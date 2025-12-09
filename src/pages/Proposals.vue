@@ -84,13 +84,21 @@
                                         <span class="sr-only">Ver detalles</span>
                                     </button>
                                     <!-- Ver PDF en modal -->
-                                    <button class="icon-btn" @click="openPdfModal(row)" :disabled="pdfLoading"
-                                        title="Ver PDF">
+                                    <button 
+                                        class="icon-btn" 
+                                        :class="{ 'loading': pdfLoadingRows.has(row.proposalNo || row.ProposalNo) }"
+                                        :disabled="pdfLoadingRows.has(row.proposalNo || row.ProposalNo)"
+                                        :title="pdfLoadingRows.has(row.proposalNo || row.ProposalNo) ? 'Cargando PDF...' : 'Ver PDF'"
+                                        @click="openPdfModal(row)">
                                         <!-- Icono documento -->
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                        <svg v-if="!pdfLoadingRows.has(row.proposalNo || row.ProposalNo)" width="18" height="18" viewBox="0 0 24 24" fill="none">
                                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"
                                                 stroke="currentColor" stroke-width="2" fill="none" />
                                             <path d="M14 2v6h6" stroke="currentColor" stroke-width="2" fill="none" />
+                                        </svg>
+                                        <svg v-else class="spinner" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="31.416" stroke-dashoffset="31.416" fill="none" opacity="0.3"/>
+                                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="31.416" stroke-dashoffset="23.562" fill="none"/>
                                         </svg>
                                     </button>
                                     <!--Enviar -->
@@ -197,6 +205,7 @@ const pdfUrl = ref(null)
 const pdfLoading = ref(false)
 const pdfError = ref('')
 const currentPdfId = ref(null)
+const pdfLoadingRows = reactive(new Set()) // Para rastrear qué fila está cargando
 const sending = reactive(new Set())
 const toast = reactive({ show: false, text: '', type: 'success' }) // type: 'success' | 'error'
 let toastTimer
@@ -304,8 +313,13 @@ function base64ToBlobUrl(base64, mime = 'application/pdf') {
 
 async function openPdfModal(row) {
     const id = row?.proposalNo || row?.ProposalNo
-    if (!id || pdfLoading.value) return
+    if (!id) return
+    
+    // Usar proposalNo como clave única para esta fila específica
+    const key = id
+    if (pdfLoadingRows.has(key)) return
 
+    pdfLoadingRows.add(key)
     pdfLoading.value = true
     pdfError.value = ''
     currentPdfId.value = id
@@ -336,6 +350,7 @@ async function openPdfModal(row) {
         showPdf.value = true
     } finally {
         pdfLoading.value = false
+        pdfLoadingRows.delete(key)
     }
 }
 
@@ -951,6 +966,10 @@ onMounted(load)
 
 .icon-btn:hover:not(:disabled) {
     background: #f8fafc;
+}
+
+.icon-btn .spinner {
+    animation: spin 1s linear infinite;
 }
 
 .spin {
