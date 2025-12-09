@@ -63,10 +63,19 @@
                 <td>{{ formatDate(row.createdAt) }}</td>
                 <td class="actions">
                   <!-- Ver PDF en modal -->
-                  <button class="icon-btn" @click="openPdfModal(row)" :disabled="pdfLoading" title="Ver PDF">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <button 
+                    class="icon-btn" 
+                    :class="{ 'loading': pdfLoadingRows.has(row.no || row.No) }"
+                    :disabled="pdfLoadingRows.has(row.no || row.No)"
+                    :title="pdfLoadingRows.has(row.no || row.No) ? 'Cargando PDF...' : 'Ver PDF'"
+                    @click="openPdfModal(row)">
+                    <svg v-if="!pdfLoadingRows.has(row.no || row.No)" width="18" height="18" viewBox="0 0 24 24" fill="none">
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" stroke="currentColor" stroke-width="2" />
                       <path d="M14 2v6h6" stroke="currentColor" stroke-width="2" />
+                    </svg>
+                    <svg v-else class="spinner" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="31.416" stroke-dashoffset="31.416" fill="none" opacity="0.3"/>
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="31.416" stroke-dashoffset="23.562" fill="none"/>
                     </svg>
                   </button>
 
@@ -198,6 +207,7 @@ const pdfUrl = ref(null)
 const pdfLoading = ref(false)
 const pdfError = ref('')
 const currentPdfId = ref(null)
+const pdfLoadingRows = reactive(new Set()) // Para rastrear qué fila está cargando
 
 function revokePdfUrl () {
   if (pdfUrl.value) { URL.revokeObjectURL(pdfUrl.value); pdfUrl.value = null }
@@ -211,7 +221,13 @@ function base64ToBlobUrl(base64, mime='application/pdf'){
 }
 async function openPdfModal(row){
   const id = row?.no || row?.No
-  if (!id || pdfLoading.value) return
+  if (!id) return
+  
+  // Usar no como clave única para esta fila específica
+  const key = id
+  if (pdfLoadingRows.has(key)) return
+  
+  pdfLoadingRows.add(key)
   pdfLoading.value = true; pdfError.value = ''; currentPdfId.value = id; revokePdfUrl()
   try{
     const { data } = await api.get(`/v1/ContractCliente/ContractPdf/${encodeURIComponent(id)}/false`, { responseType: 'text' })
@@ -226,6 +242,7 @@ async function openPdfModal(row){
     showPdf.value = true
   }finally{
     pdfLoading.value = false
+    pdfLoadingRows.delete(key)
   }
 }
 function closePdf(){ showPdf.value=false; currentPdfId.value=null; pdfError.value=''; revokePdfUrl() }
@@ -477,6 +494,9 @@ onMounted(load)
 .toast-error{ border-color:#fca5a5; }
 .toast-close{ background:transparent; border:none; font-size:1.1rem; line-height:1; cursor:pointer; margin-left:.25rem; }
 
+.icon-btn .spinner {
+  animation: spin 1s linear infinite;
+}
 .spin{ animation:spin 1s linear infinite; }
 @keyframes spin{ to{ transform:rotate(360deg) } }
 

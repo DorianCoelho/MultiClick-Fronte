@@ -208,6 +208,7 @@ const pdfUrl = ref(null)
 const pdfLoading = ref(false)
 const pdfError = ref('')
 const currentPdfId = ref(null)
+const pdfLoadingRows = reactive(new Set()) // Para rastrear qué fila está cargando
 
 function revokePdfUrl() {
   if (pdfUrl.value) {
@@ -232,8 +233,8 @@ function getRowPdfId(row) {
 }
 
 async function fetchPdfBase64ById(id) {
-  // el endpoint que ya usas en Propuestas
-  const url = `/v1/ProposalCliente/ProposalPdf/${encodeURIComponent(id)}/false`
+  // Endpoint MultiClick GetPdf
+  const url = `/v1/MultiClick/GetPdf/${encodeURIComponent(id)}`
   // pedimos como texto por si viene como string con comillas
   const { data } = await api.get(url, { responseType: 'text' })
   let base64 = typeof data === 'string' ? data : (data && data.base64) || ''
@@ -245,10 +246,14 @@ async function fetchPdfBase64ById(id) {
 }
 
 async function openPdfModal(row) {
-  if (pdfLoading.value) return
   const id = getRowPdfId(row)
   if (!id) { showToast('No hay identificador de PDF para esta fila.', 'error'); return }
+  
+  // Usar multiClickDocumentNo como clave única para esta fila específica
+  const key = id
+  if (pdfLoadingRows.has(key)) return
 
+  pdfLoadingRows.add(key)
   pdfLoading.value = true
   pdfError.value = ''
   currentPdfId.value = id
@@ -267,6 +272,7 @@ async function openPdfModal(row) {
     showPdf.value = true
   } finally {
     pdfLoading.value = false
+    pdfLoadingRows.delete(key)
   }
 }
 
@@ -370,11 +376,20 @@ onMounted(() => window.addEventListener('keydown', onKey))
                 <td class="text-end">
                   <div class="actions actions--end">
                     <!-- Ver PDF en modal -->
-                    <button class="icon-btn" title="Ver PDF" @click="openPdfModal(r)">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <button 
+                      class="icon-btn" 
+                      :class="{ 'loading': pdfLoadingRows.has(r.multiClickDocumentNo) }"
+                      :disabled="pdfLoadingRows.has(r.multiClickDocumentNo)"
+                      :title="pdfLoadingRows.has(r.multiClickDocumentNo) ? 'Cargando PDF...' : 'Ver PDF'" 
+                      @click="openPdfModal(r)">
+                      <svg v-if="!pdfLoadingRows.has(r.multiClickDocumentNo)" width="18" height="18" viewBox="0 0 24 24" fill="none">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" stroke="currentColor"
                           stroke-width="2" fill="none" />
                         <path d="M14 2v6h6" stroke="currentColor" stroke-width="2" fill="none" />
+                      </svg>
+                      <svg v-else class="spinner" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="31.416" stroke-dashoffset="31.416" fill="none" opacity="0.3"/>
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="31.416" stroke-dashoffset="23.562" fill="none"/>
                       </svg>
                     </button>
 
@@ -745,6 +760,15 @@ onMounted(() => window.addEventListener('keydown', onKey))
 
 .icon-btn:hover:not(:disabled) {
   background: #f8fafc;
+}
+
+.icon-btn .spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 /* Contenedor para alinear y espaciar los botones */
 .actions { display: flex; gap: .35rem; align-items: center; }
