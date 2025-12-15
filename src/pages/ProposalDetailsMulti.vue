@@ -18,7 +18,17 @@
                     </div>
                 </div>
                 <div class="head-actions">
-                    <!-- <button class="btn" @click="router.back()">← Volver</button> -->
+                    <button 
+                        v-if="p.proposalNo"
+                        class="btn btn-pdf" 
+                        @click="openPdfModal"
+                        :disabled="pdfLoading">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+                            <path d="M14 2v6h6"/>
+                        </svg>
+                        {{ pdfLoading ? 'Cargando...' : 'Ver PDF' }}
+                    </button>
                 </div>
             </header>
 
@@ -356,6 +366,26 @@
 
             </section>
         </div>
+
+        <!-- PDF Modal -->
+        <div v-if="showPdf" class="pdf-modal" @keydown.esc="closePdf" tabindex="0">
+            <div class="pdf-toolbar">
+                <div class="left">
+                    <strong class="mono">PDF · {{ currentPdfId || '—' }}</strong>
+                </div>
+                <div class="right">
+                    <a v-if="pdfUrl" :href="pdfUrl" target="_blank" rel="noopener" class="btn-ghost btn-ghost-p">Abrir en pestaña</a>
+                    <button class="btn-ghost btn-ghost-p" @click="downloadFromModal" :disabled="!pdfUrl">Descargar</button>
+                    <button class="btn btn-ghost-custom2" @click="closePdf">Cerrar ✕</button>
+                </div>
+            </div>
+
+            <div class="pdf-body">
+                <div v-if="pdfLoading" class="pdf-center muted">Cargando PDF…</div>
+                <div v-else-if="pdfError" class="pdf-center text-danger">{{ pdfError }}</div>
+                <iframe v-else class="pdf-frame" :src="pdfUrl" title="Documento PDF"></iframe>
+            </div>
+        </div>
     </DashboardLayout>
 </template>
 
@@ -480,7 +510,89 @@ async function load() {
         loading.value = false
     }
 }
-onMounted(load)
+// === PDF state & utils ===
+const showPdf = ref(false)
+const pdfUrl = ref(null)
+const pdfLoading = ref(false)
+const pdfError = ref('')
+const currentPdfId = ref(null)
+
+function revokePdfUrl() {
+  if (pdfUrl.value) {
+    URL.revokeObjectURL(pdfUrl.value)
+    pdfUrl.value = null
+  }
+}
+function base64ToBlobUrl(base64, mime = 'application/pdf') {
+  const binStr = atob(base64)
+  const len = binStr.length
+  const bytes = new Uint8Array(len)
+  for (let i = 0; i < len; i++) bytes[i] = binStr.charCodeAt(i)
+  const blob = new Blob([bytes], { type: mime })
+  return URL.createObjectURL(blob)
+}
+
+async function fetchPdfBase64ById(id) {
+  const url = `/v1/ProposalCliente/ProposalPdf/${encodeURIComponent(id)}/false`
+  const { data } = await api.get(url, { responseType: 'text' })
+  let base64 = typeof data === 'string' ? data : (data && data.base64) || ''
+  if (!base64) throw new Error('PDF vacío')
+  if (base64.startsWith('"')) {
+    try { base64 = JSON.parse(base64) } catch { }
+  }
+  return base64
+}
+
+async function openPdfModal() {
+  const id = p.value?.proposalNo
+  if (!id) { 
+    error.value = 'No hay identificador de PDF para esta propuesta.'
+    return 
+  }
+  
+  pdfLoading.value = true
+  pdfError.value = ''
+  currentPdfId.value = id
+  revokePdfUrl()
+
+  try {
+    const base64 = await fetchPdfBase64ById(id)
+    pdfUrl.value = base64ToBlobUrl(base64)
+    showPdf.value = true
+    requestAnimationFrame(() => {
+      const el = document.querySelector('.pdf-modal')
+      if (el && typeof el.focus === 'function') el.focus()
+    })
+  } catch (e) {
+    pdfError.value = e?.response?.data?.message || e?.message || 'No se pudo cargar el PDF'
+    showPdf.value = true
+  } finally {
+    pdfLoading.value = false
+  }
+}
+
+function closePdf() {
+  showPdf.value = false
+  currentPdfId.value = null
+  pdfError.value = ''
+  revokePdfUrl()
+}
+
+function downloadFromModal() {
+  if (!pdfUrl.value) return
+  const a = document.createElement('a')
+  a.href = pdfUrl.value
+  a.download = `${currentPdfId.value || 'documento'}.pdf`
+  document.body.appendChild(a); a.click(); a.remove()
+}
+
+function onKey(e) {
+  if (e.key === 'Escape' && showPdf.value) closePdf()
+}
+onMounted(() => {
+  load()
+  window.addEventListener('keydown', onKey)
+})
 </script>
 
 <style scoped>
@@ -667,5 +779,112 @@ onMounted(load)
     color: #3730a3;
     font-weight: 600;
     font-size: .8rem
+}
+
+.btn-pdf {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.75rem;
+    border: 1px solid #2563eb;
+    border-radius: 0.5rem;
+    background: #2563eb;
+    color: #fff;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-pdf:hover:not(:disabled) {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+}
+
+.btn-pdf:disabled {
+    opacity: .6;
+    cursor: not-allowed;
+}
+
+.btn-pdf svg {
+    flex-shrink: 0;
+}
+
+/* PDF Modal */
+.pdf-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    background: rgba(17, 24, 39, .92);
+    backdrop-filter: blur(2px);
+    outline: none;
+}
+
+.pdf-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    padding: .5rem .75rem;
+    color: #fff;
+    background: #111827;
+    border-bottom: 1px solid #1f2937;
+}
+
+.pdf-toolbar .btn,
+.pdf-toolbar .btn-ghost {
+    margin-left: .25rem;
+}
+
+.pdf-body {
+    position: relative;
+}
+
+.pdf-frame {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #111827;
+}
+
+.pdf-center {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .95rem;
+}
+
+.btn-ghost {
+    background: transparent;
+    border: 1px solid transparent;
+    color: #e5e7eb;
+    cursor: pointer;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+}
+
+.btn-ghost:hover {
+    border-color: #374151;
+}
+
+.btn-ghost-p:hover {
+    border: 1px solid #374151 !important;
+    background: #111827 !important;
+}
+
+.btn-ghost-custom2 {
+    border-radius: .5rem;
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    color: #111827;
+}
+
+.btn-ghost-custom2:hover {
+    border-radius: .5rem;
+    background: #111827;
+    color: #fff;
 }
 </style>

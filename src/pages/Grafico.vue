@@ -4,11 +4,12 @@ import DashboardLayout from '@/layouts/DashboardLayout.vue'
 import api from '@/services/api'
 import MultiClickModal from '@/components/MultiClickModal.vue'
 import { useAuthStore } from '@/stores/auth'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Toast } from 'bootstrap'
 import config from '@/config/env'
 
 const route = useRoute()
+const router = useRouter()
 
 // CUPS que puede venir en la query (p.ej. /grafico?cups=ES123...)
 const prefilledCups = ref('')
@@ -97,6 +98,45 @@ function parseNumLike(n) {
   const s = String(n).replace(',', '.')
   const v = Number(s)
   return Number.isFinite(v) ? v : null
+}
+
+// Obtener IP pública del usuario
+async function getPublicIP() {
+  try {
+    const { ip } = await fetch('https://api.ipify.org?format=json').then(r => r.json())
+    return ip || ''
+  } catch (e) {
+    console.warn('No se pudo obtener la IP pública:', e)
+    return ''
+  }
+}
+
+// Detectar tipo de dispositivo
+function getDeviceType() {
+  const ua = navigator.userAgent || navigator.vendor || window.opera
+  
+  // Detectar iOS
+  if (/iPad|iPhone|iPod/.test(ua) && !window.MSStream) {
+    return /iPad/.test(ua) ? 'Tablet iOS' : 'Mobile iOS'
+  }
+  
+  // Detectar Android
+  if (/android/i.test(ua)) {
+    return /mobile/i.test(ua) ? 'Mobile Android' : 'Tablet Android'
+  }
+  
+  // Detectar tablet genérica
+  if (/(tablet|ipad|playbook|silk)|(android(?!.*mobi))/i.test(ua)) {
+    return 'Tablet'
+  }
+  
+  // Detectar móvil genérico
+  if (/Mobile|iP(hone|od)|Android|BlackBerry|IEMobile|Kindle|Silk-Accelerated|(hpw|web)OS|Opera M(obi|ini)/.test(ua)) {
+    return 'Mobile'
+  }
+  
+  // Por defecto, PC
+  return 'PC'
 }
 
 // Datos API (mapas para el gráfico)
@@ -848,7 +888,25 @@ async function onSubmitModal(payload) {
   console.log('📤 Enviando SendProposalByUser con los siguientes datos:', JSON.stringify(payload, null, 2))
   console.log('📊 Detalle del payload:', payload)
   try {
-    const res = await api.post('/v1/MultiClick/SendProposalByUser', payload, {
+    // Obtener Coverage desde localStorage
+    const coverage = auth.coverage ?? localStorage.getItem('coverage')
+    const coverageNum = coverage != null ? Number(coverage) : 0
+    
+    // Obtener IP y Device
+    const ipAddress = await getPublicIP()
+    const device = getDeviceType()
+    
+    // Añadir los 3 campos al payload
+    const enrichedPayload = {
+      ...payload,
+      coverage: coverageNum,
+      ipAddress: ipAddress,
+      device: device
+    }
+    
+    console.log('📤 Payload enriquecido con Coverage, IP y Device:', JSON.stringify(enrichedPayload, null, 2))
+    
+    const res = await api.post('/v1/MultiClick/SendProposalByUser', enrichedPayload, {
       headers: { 'Content-Type': 'application/json' }
     })
 
@@ -985,6 +1043,19 @@ async function fetchPdfBase64ById(id) {
   return base64
 }
 
+async function fetchOperationPdfBase64ById(id) {
+  // Endpoint MultiClick GetOperationPdf
+  const url = `/v1/MultiClick/GetOperationPdf/${encodeURIComponent(id)}`
+  // pedimos como texto por si viene como string con comillas
+  const { data } = await api.get(url, { responseType: 'text' })
+  let base64 = typeof data === 'string' ? data : (data && data.base64) || ''
+  if (!base64) throw new Error('PDF vacío')
+  if (base64.startsWith('"')) {
+    try { base64 = JSON.parse(base64) } catch { }
+  }
+  return base64
+}
+
 async function openPdfModal(row) {
   const id = getRowPdfId(row)
   if (!id) { showToast('No hay identificador de PDF para esta fila.', 'error'); return }
@@ -1029,6 +1100,31 @@ function downloadFromModal() {
   a.href = pdfUrl.value
   a.download = `${currentPdfId.value || 'documento'}.pdf`
   document.body.appendChild(a); a.click(); a.remove()
+}
+
+async function openOperationPdfModal(row) {
+  const id = row?.multiClickDocumentNo
+  if (!id) { showToast('No hay multiClickDocumentNo para esta fila.', 'error'); return }
+  
+  pdfLoading.value = true
+  pdfError.value = ''
+  currentPdfId.value = id
+  revokePdfUrl()
+
+  try {
+    const base64 = await fetchOperationPdfBase64ById(id)
+    pdfUrl.value = base64ToBlobUrl(base64)
+    showPdf.value = true
+    requestAnimationFrame(() => {
+      const el = document.querySelector('.pdf-modal')
+      if (el && typeof el.focus === 'function') el.focus()
+    })
+  } catch (e) {
+    pdfError.value = e?.response?.data?.message || e?.message || 'No se pudo cargar el PDF'
+    showPdf.value = true
+  } finally {
+    pdfLoading.value = false
+  }
 }
 
 /* ===================== Aprobar MultiClick ===================== */
@@ -1151,11 +1247,31 @@ onMounted(async () => {
             <tbody>
               <tr v-for="r in multiclickRows" :key="r.contractNo + '|' + r.cups">
                 <td class="mono">
-                  {{ r.contractNo }}
-                  <small class="muted d-block">{{ r.multiClickDocumentType }} · {{ r.multiClickDocumentNo }}</small>
+                  <small class="muted d-block">
+                    
+                    <a 
+                      href="#" 
+                      @click.prevent="router.push({ name: 'MultiClickDetails', query: { contractNo: r.contractNo, customerNo: r.customerNo } })"
+                      class="link-document"
+                      :title="`Ver detalles del contrato ${r.contractNo}`">
+                      {{ r.multiClickDocumentNo }}
+                    </a>
+                  </small>
+                  
+                  <small class="muted d-block font-size-small">
+                    {{ r.contractNo }}
+                  </small>
                 </td>
                 <td class="mono">{{ r.cups }}</td>
-                <td class="mono">{{ r.refApplicationOperNo }}</td>
+                <td class="mono">
+                  <a 
+                    href="#" 
+                    @click.prevent="openOperationPdfModal(r)"
+                    class="link-document"
+                    :title="`Ver PDF de operación ${r.refApplicationOperNo}`">
+                    {{ r.refApplicationOperNo }}
+                  </a>
+                </td>
                 <td>{{ r.rateNo }}</td>
                 <td class="mono text-center">{{ fmtNum(r.selectedPrice) }}</td>
                 <!-- <td class="mono">{{ fmtNum(r.feeEnergy) }}</td> -->
@@ -1616,6 +1732,22 @@ onMounted(async () => {
   font-size: 0.875rem;
   color: #374151;
   font-weight: 500;
+}
+
+.font-size-small {
+  font-size: 0.70rem;
+}
+
+.link-document {
+  color: #2563eb;
+  text-decoration: none;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.link-document:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
 }
 
 </style>
