@@ -819,7 +819,7 @@ function onRemove(key) { emit('remove', key) }
       @keydown.esc="$emit('close')">
       <div id="mc-modal" class="mc-modal" tabindex="-1">
         <div class="mc-header">
-          <h5 class="m-0">GENETAT NUEVO CLICK</h5>
+          <h5 class="m-0">GENERAR NUEVO CLICK</h5>
           <button type="button" class="btn-close" aria-label="Cerrar" @click="$emit('close')">×</button>
         </div>
 
