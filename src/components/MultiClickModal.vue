@@ -2,10 +2,11 @@
 import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue'
 import api from '@/services/api'
 import config from '@/config/env'
+import { useAuthStore } from '@/stores/auth'
 
 const isSubmitting = ref(false)
 let submitTimerId = null
-const LOCK_MS = 1000
+const LOCK_MS = 3000  // 3 segundos para mostrar "Enviando…"
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -43,6 +44,13 @@ const hasOverlap = ref(false)
 const showSimpleModal = ref(false)
 const multicupsEnabled = ref(true)  // Indica si el contrato permite multicups
 const modalReady = ref(false)  // Controla si el modal está listo para mostrarse
+
+// Estado del wizard (2 pasos)
+const currentStep = ref(1)
+
+// Campo Coverage
+const auth = useAuthStore()
+const coverage = ref('')
 
 
 const average = (values) => {
@@ -160,6 +168,199 @@ const calculatedEndMonth = computed(() => {
   const { year: endYear, month: endMonth } = addMonths(year, month, duration - 1)
   return formatMonthLabel(endYear, endMonth)
 })
+
+// Computed: obtener fecha de inicio formateada
+const startDateFormatted = computed(() => {
+  if (!startMonth.value) return ''
+  const match = startMonth.value.match(/(\d{4})-(\d{2})/)
+  if (!match) return ''
+  const year = parseInt(match[1])
+  const month = parseInt(match[2])
+  return formatMonthLabel(year, month)
+})
+
+// Computed: obtener fecha de fin formateada
+const endDateFormatted = computed(() => {
+  return calculatedEndMonth.value
+})
+
+// Computed: generar periodos de duración del click (meses)
+const clickPeriods = computed(() => {
+  if (!startMonth.value) return []
+  
+  const match = startMonth.value.match(/(\d{4})-(\d{2})/)
+  if (!match) return []
+  
+  const year = parseInt(match[1])
+  const month = parseInt(match[2])
+  const duration = periodType.value === 'Q' ? 3 : periodType.value === 'S' ? 6 : 12
+  
+  const periods = []
+  for (let i = 0; i < duration; i++) {
+    const { year: y, month: m } = addMonths(year, month, i)
+    periods.push({
+      key: getMonthValue(y, m),
+      label: formatMonthLabel(y, m),
+      cmm: 0  // Consumo media mensual - se inicializa en 0
+    })
+  }
+  
+  return periods
+})
+
+// Estado para almacenar CMM de cada periodo
+const periodCmm = ref({})  // { "2027-01": 100, "2027-02": 150, ... }
+const loadingCmm = ref(false)  // Estado de carga de CMM
+
+// Computed: calcular volumen total de energía declarada (CMM con cobertura aplicada)
+const totalVolume = computed(() => {
+  return clickPeriods.value.reduce((sum, period) => {
+    const cmmWithCoverage = getCmmWithCoverage(period.key)
+    return sum + cmmWithCoverage
+  }, 0)
+})
+
+// Computed: calcular volumen total sin cobertura (para referencia)
+const totalVolumeWithoutCoverage = computed(() => {
+  return Object.values(periodCmm.value).reduce((sum, val) => {
+    const num = Number(val) || 0
+    return sum + num
+  }, 0)
+})
+
+// Función para actualizar CMM de un periodo
+function updatePeriodCmm(periodKey, value) {
+  const numValue = Number(value) || 0
+  // Crear nuevo objeto para forzar reactividad
+  periodCmm.value = {
+    ...periodCmm.value,
+    [periodKey]: numValue
+  }
+  console.log(`CMM actualizado para ${periodKey}: ${numValue}`)
+}
+
+// Función para obtener CMM de un periodo
+function getPeriodCmm(periodKey) {
+  const value = periodCmm.value[periodKey] || 0
+  return value
+}
+
+// Función para calcular CMM con cobertura aplicada
+function getCmmWithCoverage(periodKey) {
+  const cmm = periodCmm.value[periodKey] || 0
+  const coverageNum = parseNumLike(coverage.value) || 0
+  // Calcular: CMM * (Cobertura / 100)
+  const result = cmm * (coverageNum / 100)
+  return Number(result.toFixed(2))
+}
+
+// Función para calcular fecha de inicio en formato YYYY-MM-DD
+function getStartDateFormatted() {
+  if (!startMonth.value) return null
+  const match = startMonth.value.match(/(\d{4})-(\d{2})/)
+  if (!match) return null
+  const year = parseInt(match[1])
+  const month = parseInt(match[2])
+  // Primer día del mes
+  return `${year}-${String(month).padStart(2, '0')}-01`
+}
+
+// Función para calcular fecha de fin en formato YYYY-MM-DD
+function getEndDateFormatted() {
+  if (!startMonth.value) return null
+  const match = startMonth.value.match(/(\d{4})-(\d{2})/)
+  if (!match) return null
+  
+  const year = parseInt(match[1])
+  const month = parseInt(match[2])
+  const duration = periodType.value === 'Q' ? 3 : periodType.value === 'S' ? 6 : 12
+  
+  // Calcular mes final
+  const { year: endYear, month: endMonth } = addMonths(year, month, duration - 1)
+  
+  // Último día del mes final
+  const lastDay = new Date(endYear, endMonth, 0).getDate()
+  return `${endYear}-${String(endMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+}
+
+// Función para cargar CMM desde el API
+async function loadMonthlyConsumption() {
+  if (!cups.value || !startMonth.value) {
+    // Limpiar CMM si no hay datos
+    periodCmm.value = {}
+    return
+  }
+  
+  loadingCmm.value = true
+  
+  try {
+    const startDate = getStartDateFormatted()
+    const endDate = getEndDateFormatted()
+    
+    if (!startDate || !endDate) {
+      console.warn('No se pudieron calcular las fechas')
+      return
+    }
+    
+    const { data } = await api.post('/v1/SipsDailyReading/MonthlyConsumption', {
+      cups: cups.value,
+      startDate: startDate,
+      endDate: endDate,
+      page: 1,
+      size: 3000
+    })
+    
+    // Normalizar respuesta (puede venir como array o dentro de un objeto)
+    const items = Array.isArray(data) ? data : (data?.items || data?.result || [])
+    
+    console.log('Respuesta API MonthlyConsumption:', items)
+    
+    // Crear mapa de consumo por mes (ignorando el año, ya que usamos datos históricos)
+    const consumptionByMonth = {}
+    
+    // Primero, crear un mapa de consumo por mes desde los datos históricos
+    items.forEach(item => {
+      const month = item.month ?? item.Month ?? null
+      const cmm = item.cmm ?? item.Cmm ?? 0
+      
+      if (month != null) {
+        // Guardar el consumo por número de mes (1-12)
+        const monthKey = String(month).padStart(2, '0')
+        consumptionByMonth[monthKey] = Number(cmm) || 0
+        console.log(`CMM histórico para mes ${monthKey} (${item.monthName}): ${cmm}`)
+      }
+    })
+    
+    // Crear nuevo objeto para almacenar CMM mapeado a los períodos del click
+    const newPeriodCmm = {}
+    
+    // Mapear el consumo histórico a los períodos del click
+    clickPeriods.value.forEach(period => {
+      // Extraer el mes del período del click (ej: "2028-01" -> "01")
+      const monthPart = period.key.split('-')[1]
+      
+      // Asignar el consumo histórico de ese mes al período del click
+      if (consumptionByMonth[monthPart] !== undefined) {
+        newPeriodCmm[period.key] = consumptionByMonth[monthPart]
+        console.log(`Asignando CMM ${consumptionByMonth[monthPart]} al período ${period.key} (${period.label})`)
+      } else {
+        newPeriodCmm[period.key] = 0
+        console.warn(`No hay datos de CMM para el mes ${monthPart} en el período ${period.key}`)
+      }
+    })
+    
+    // Asignar el nuevo objeto completo para forzar reactividad
+    periodCmm.value = newPeriodCmm
+    
+    console.log('CMM final asignado a períodos del click:', periodCmm.value)
+  } catch (e) {
+    console.error('Error cargando consumo mensual:', e)
+    // No mostrar error al usuario, solo limpiar
+    periodCmm.value = {}
+  } finally {
+    loadingCmm.value = false
+  }
+}
 
 // Watch para actualizar endMonth cuando cambie startMonth o periodType
 watch([startMonth, periodType], () => {
@@ -306,6 +507,11 @@ const canSubmit = computed(() => {
   const price = parseNumLike(fixedPrice.value)
   if (price == null || price <= 0) { formError.value = 'Indica un precio válido.'; return false }
   if (!props.points.length) { formError.value = 'No hay puntos seleccionados.'; return false }
+  
+  // Validar Coverage
+  const coverageNum = parseNumLike(coverage.value)
+  if (coverageNum == null || coverageNum < 0) { formError.value = 'Indica una Cobertura válido.'; return false }
+  
   return true
 })
 
@@ -413,6 +619,8 @@ watch(() => props.show, async (v) => {
     hasOverlap.value = false
     showSimpleModal.value = false
     modalReady.value = false
+    currentStep.value = 1
+    periodCmm.value = {}
     return
   }
   
@@ -421,6 +629,12 @@ watch(() => props.show, async (v) => {
   hasOverlap.value = false
   showSimpleModal.value = false
   modalReady.value = false
+  currentStep.value = 1
+  periodCmm.value = {}
+  
+  // Inicializar Coverage desde localStorage o auth store
+  const savedCoverage = auth.coverage ?? localStorage.getItem('coverage')
+  coverage.value = savedCoverage ? String(savedCoverage) : ''
   
   console.log('Modal abierto. Props:', { 
     points: props.points, 
@@ -451,6 +665,12 @@ watch(() => props.show, async (v) => {
   
   await loadCups() // ← ahora usa LastContractIndex
   await nextTick()
+  
+  // Cargar CMM si ya tenemos CUPS y startMonth
+  if (cups.value && startMonth.value) {
+    await loadMonthlyConsumption()
+  }
+  
   document.getElementById('mc-modal')?.focus()
 })
 
@@ -501,6 +721,16 @@ watch(cups, async (newCups, oldCups) => {
 watch([startMonth, periodType], async () => {
   if (!props.show) return
   await validateCurrentCups()
+  // Cargar CMM cuando cambien las fechas
+  if (cups.value && startMonth.value) {
+    await loadMonthlyConsumption()
+  }
+})
+
+// Watch para cargar CMM cuando cambie el CUPS
+watch(cups, async (newCups) => {
+  if (!props.show || !newCups || !startMonth.value) return
+  await loadMonthlyConsumption()
 })
 function blockSubmit() {
   if (isSubmitting.value) return
@@ -522,6 +752,7 @@ function onSubmit() {
 
   const basePrice = Number(parseNumLike(fixedPrice.value) || 0)
   const fee = Number(props.feeEnergy || 0)
+  const coverageNum = Number(parseNumLike(coverage.value) || 0)
   
   const payload = {
     contractNo: contractNo.value,
@@ -530,16 +761,55 @@ function onSubmit() {
     periodType: periodType.value,
     fixedPriceOmip: basePrice,                               // Precio base + fee energy
     periodKeys: props.points.map(p => `${p.key}-01`),
-    volumeMw: 0,
+    volumeMw: totalVolume.value,                              // Volumen total calculado
     startMonth: startMonth.value ? `${startMonth.value}-01` : '',   // Fecha mes inicio (YYYY-MM-01)
     endMonth: endMonth.value,                                       // Mes final calculado (texto)
-    feeEnergy: fee                                                  // Fee energy del contrato
+    feeEnergy: fee,                                                 // Fee energy del contrato
+    coverage: coverageNum                                           // Coverage (porcentaje)
   }
 
   emit('submit', payload)
 
 
 }
+
+// Funciones de navegación del wizard
+async function nextStep() {
+  if (currentStep.value === 1) {
+    // Validar que se haya seleccionado mes de inicio
+    if (!startMonth.value) {
+      formError.value = 'Selecciona un mes de inicio.'
+      return
+    }
+    
+    console.log('Avanzando al paso 2...')
+    console.log('CUPS:', cups.value)
+    console.log('Start Month:', startMonth.value)
+    console.log('Period Type:', periodType.value)
+    console.log('Click Periods:', clickPeriods.value)
+    
+    currentStep.value = 2
+    
+    // Cargar CMM cuando se avanza al paso 2
+    if (cups.value && startMonth.value) {
+      console.log('Cargando consumo mensual...')
+      await loadMonthlyConsumption()
+    } else {
+      console.warn('No se puede cargar CMM - Falta CUPS o Start Month')
+    }
+  }
+}
+
+function prevStep() {
+  if (currentStep.value === 2) {
+    currentStep.value = 1
+  }
+}
+
+// Validación para el paso 1
+const canGoToNextStep = computed(() => {
+  return !!startMonth.value && periodType.value && ['Q', 'S', 'Y'].includes(periodType.value)
+})
 function onRemove(key) { emit('remove', key) }
 </script>
 
@@ -549,123 +819,230 @@ function onRemove(key) { emit('remove', key) }
       @keydown.esc="$emit('close')">
       <div id="mc-modal" class="mc-modal" tabindex="-1">
         <div class="mc-header">
-          <h5 class="m-0">SOLICITUD DE OPERACIÓN</h5>
+          <h5 class="m-0">GENETAT NUEVO CLICK</h5>
           <button type="button" class="btn-close" aria-label="Cerrar" @click="$emit('close')">×</button>
         </div>
 
         <div class="mc-body">
-          <!-- Tabla puntos -->
-          <div class="mb-3">
-            <h6 class="mb-2">Punto (OMIP Base)</h6>
-            <div class="table-responsive">
-              <table class="table table-sm align-middle mb-0">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Mes / Año</th>
-                    <th>Mes Inicio</th>
-                    <th>Mes Final</th>
-                    <th>Valor (€/MWh)</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(p, i) in points" :key="p.key">
-                    <td>{{ i + 1 }}</td>
-                    <td>{{ p.label }}</td>
-                    <td>
-                      <select class="form-select form-select-sm" v-model="startMonth" style="min-width: 120px;">
-                        <option value="">Seleccionar</option>
-                        <option v-for="opt in startMonthOptions" :key="opt.value" :value="opt.value">
-                          {{ opt.label }}
-                        </option>
-                      </select>
-                    </td>
-                    <td>
-                      <input type="text" class="form-control form-control-sm" :value="endMonth" readonly style="min-width: 100px;" />
-                    </td>
-                    <td>{{ fixedPrice ? `${fixedPrice} € / MWh` : '-' }}</td>
-                    <td>
-                      <button type="button" class="btn btn-sm btn-outline-danger" @click="onRemove(p.key)">
-                        Quitar
-                      </button>
-                    </td>
-                  </tr>
-                  <tr v-if="!points.length">
-                    <td colspan="6" class="text-center text-muted">Sin punto seleccionado</td>
-                  </tr>
-                </tbody>
-              </table>
+          <!-- Indicador de pasos -->
+          <div class="wizard-steps mb-4">
+            <div class="step-indicator" :class="{ active: currentStep === 1, completed: currentStep > 1 }">
+              <span class="step-number">1</span>
+              <span class="step-label">Selección</span>
             </div>
-            <small class="text-muted">Máximo 1 punto.</small>
+            <div class="step-indicator" :class="{ active: currentStep === 2, completed: currentStep > 2 }">
+              <span class="step-number">2</span>
+              <span class="step-label">Datos</span>
+            </div>
           </div>
 
-          <hr class="my-3" />
+          <!-- PASO 1: Selección de punto y duración -->
+          <div v-if="currentStep === 1" class="wizard-step">
+            <h5 class="mb-5">INFORMACIÓN ORIENTATIVA:</h5>
 
-          <!-- Formulario -->
-          <div class="row g-3 p-3 justify-content-center align-items-center">
-            <div class="col-12 col-md-6">
-              <label class="form-label">Duración click <span class="text-danger">*</span></label>
-              <div class="btn-group w-100" role="group">
-                <button class="btn btn-outline-secondary" :class="{ active: periodType === 'Q' }"
-                  @click="periodType = 'Q'">Trimestre</button>
-                <button class="btn btn-outline-secondary" :class="{ active: periodType === 'S' }"
-                  @click="periodType = 'S'">Semestre</button>
-                <button class="btn btn-outline-secondary" :class="{ active: periodType === 'Y' }"
-                  @click="periodType = 'Y'">Año</button>
+            <!-- Tabla puntos -->
+            <div class="mb-3 mt-3">
+              <h6 class="mb-2">Punto (OMIP Base)</h6>
+              <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Mes / Año</th>
+                      <th>Mes Inicio</th>
+                      <th>Mes Final</th>
+                      <th>Valor (€/MWh)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(p, i) in points" :key="p.key">
+                      <td>{{ i + 1 }}</td>
+                      <td>{{ p.label }}</td>
+                      <td>
+                        <select class="form-select form-select-sm" v-model="startMonth" style="min-width: 120px;">
+                          <option value="">Seleccionar</option>
+                          <option v-for="opt in startMonthOptions" :key="opt.value" :value="opt.value">
+                            {{ opt.label }}
+                          </option>
+                        </select>
+                      </td>
+                      <td>
+                        <input type="text" class="form-control form-control-sm" :value="endMonth" readonly style="min-width: 100px;" />
+                      </td>
+                      <td>{{ fixedPrice ? `${fixedPrice} € / MWh` : '-' }}</td>
+                    </tr>
+                    <tr v-if="!points.length">
+                      <td colspan="5" class="text-center text-muted">Sin punto seleccionado</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <small class="text-muted">Máximo 1 punto.</small>
+            </div>
+
+            <hr class="my-3" />
+
+            <!-- Duración click -->
+            <div class="row g-3 p-3 justify-content-center align-items-center">
+              <div class="col-12 col-md-6">
+                <label class="form-label">Duración click <span class="text-danger">*</span></label>
+                <div class="btn-group w-100" role="group">
+                  <button class="btn btn-outline-secondary" :class="{ active: periodType === 'Q' }"
+                    @click="periodType = 'Q'">Trimestre</button>
+                  <button class="btn btn-outline-secondary" :class="{ active: periodType === 'S' }"
+                    @click="periodType = 'S'">Semestre</button>
+                  <button class="btn btn-outline-secondary" :class="{ active: periodType === 'Y' }"
+                    @click="periodType = 'Y'">Año</button>
+                </div>
               </div>
             </div>
           </div>
 
-
-          <div class="row g-3 p-3 justify-content-center align-items-center">
-            <div class="col-12 col-md-6">
-              <h5>Datos del Cliente:</h5>
-              <label class="form-label">Nombre</label>
-              <input class="form-control" type="text" :value="userName" readonly />
-            </div>
-          </div>
-          <div class="row g-3 p-3 justify-content-center align-items-center">
-            <div class="col-12 col-md-6">
-              <label class="form-label">DNI/CIF</label>
-              <input class="form-control" type="text" :value="cif" readonly />
-            </div>
-          </div>
-          <div class="row g-3 p-3 justify-content-center align-items-center">
-            <div class="col-12 col-md-6">
-              <label class="form-label">N.º Contrato</label>
-              <input class="form-control" type="text" :value="contractNo" readonly />
-            </div>
-          </div>
-          <div class="row g-3 p-3 justify-content-center align-items-center">
-            <div class="col-12 col-md-6">
-              <label class="form-label">CUPS <span class="text-danger">*</span></label>
-              <select class="form-select" v-model="cups" :disabled="loadingCups || !!loadError" 
-                      :class="{ 'is-invalid': hasOverlap }">
-                <option value="">Selecciona la opción</option>
-                <option v-for="c in cupsOptions" :key="c" :value="c">{{ c }}</option>
-              </select>
-              <div v-if="loadingCups" class="form-text">Cargando CUPS…</div>
-              <div v-if="loadError" class="text-danger small">{{ loadError }}</div>
-              
-              <!-- Mensaje de error de solapamiento debajo del CUPS -->
-              <div v-if="overlapError" class="alert alert-danger mt-2 mb-0" style="font-size: 0.875rem;">
-                <strong>⚠️ CUPS no disponible</strong><br/>
-                {{ overlapError }}
+          <!-- PASO 2: Datos del cliente y detalles -->
+          <div v-if="currentStep === 2" class="wizard-step">
+            <h5 class="mb-3">SOLICITUD DE OPERACIÓN:</h5>
+            
+            <div class="row g-3 p-3 justify-content-center align-items-center">
+              <div class="col-12 col-md-6">
+                <label class="form-label">Nombre</label>
+                <input class="form-control" type="text" :value="userName" readonly />
               </div>
             </div>
-          </div>
-
-
-          <div class="row g-3 p-3 justify-content-center align-items-center">
-            <div class="col-12 col-md-6">
-              <label class="form-label">Precio referencia mercado (OMIP) <span class="text-danger">*</span></label>
-              <div class="input-group">
-                <input class="form-control" type="number" inputmode="decimal" step="0.01" min="0" v-model="fixedPrice"
-                  placeholder="Ej. 85.50" readonly />
-                <span class="input-group-text">€/MWh</span>
+            <div class="row g-3 p-3 justify-content-center align-items-center">
+              <div class="col-12 col-md-6">
+                <label class="form-label">DNI/CIF</label>
+                <input class="form-control" type="text" :value="cif" readonly />
               </div>
-              <small class="text-muted">Sugerido: media de los puntos seleccionados.</small>
+            </div>
+            <div class="row g-3 p-3 justify-content-center align-items-center">
+              <div class="col-12 col-md-6">
+                <label class="form-label">N.º Contrato</label>
+                <input class="form-control" type="text" :value="contractNo" readonly />
+              </div>
+            </div>
+            <div class="row g-3 p-3 justify-content-center align-items-center">
+              <div class="col-12 col-md-6">
+                <label class="form-label">CUPS <span class="text-danger">*</span></label>
+                <select class="form-select" v-model="cups" :disabled="loadingCups || !!loadError" 
+                        :class="{ 'is-invalid': hasOverlap }">
+                  <option value="">Selecciona la opción</option>
+                  <option v-for="c in cupsOptions" :key="c" :value="c">{{ c }}</option>
+                </select>
+                <div v-if="loadingCups" class="form-text">Cargando CUPS…</div>
+                <div v-if="loadError" class="text-danger small">{{ loadError }}</div>
+                
+                <!-- Mensaje de error de solapamiento debajo del CUPS -->
+                <div v-if="overlapError" class="alert alert-danger mt-2 mb-0" style="font-size: 0.875rem;">
+                  <strong>⚠️ CUPS no disponible</strong><br/>
+                  {{ overlapError }}
+                </div>
+              </div>
+            </div>
+
+            <div class="row g-3 p-3 justify-content-center align-items-center">
+              <div class="col-12 col-md-6">
+                <label class="form-label">Precio referencia mercado (OMIP) <span class="text-danger">*</span></label>
+                <div class="input-group">
+                  <input class="form-control" type="number" inputmode="decimal" step="0.01" min="0" v-model="fixedPrice"
+                    placeholder="Ej. 85.50" readonly />
+                  <span class="input-group-text">€/MWh</span>
+                </div>
+                <small class="text-muted">Sugerido: media de los puntos seleccionados.</small>
+              </div>
+            </div>
+
+            <hr class="my-4" />
+
+            <!-- Duración del Click -->
+            <div class="row g-3 p-3">
+              <div class="col-12">
+                <h5 class="mb-3">Duración del Click:</h5>
+                
+                <div class="row g-3 mb-3">
+                  <div class="col-12 col-md-4">
+                    <label class="form-label">Fecha Inicio</label>
+                    <input class="form-control" type="text" :value="startDateFormatted" readonly />
+                  </div>
+                  <div class="col-12 col-md-4">
+                    <label class="form-label">Fecha Fin</label>
+                    <input class="form-control" type="text" :value="endDateFormatted" readonly />
+                  </div>
+                  <div class="col-12 col-md-4">
+                    <label class="form-label">Cobertura: <span class="text-danger">*</span></label>
+                    <div class="input-group">
+                      <input 
+                        class="form-control" 
+                        type="number" 
+                        inputmode="decimal" 
+                        step="0.01" 
+                        min="0" 
+                        max="100"
+                        v-model="coverage"
+                        placeholder="Ej. 50.00"
+                      />
+                      <span class="input-group-text">%</span>
+                    </div>
+                    <small class="text-muted">Porcentaje de cobertura del consumo (0-100%)</small>
+                  </div>
+                </div>
+
+                <div class="table-responsive">
+                  <table class="table table-sm align-middle">
+                    <thead>
+                      <tr>
+                        <th>Periodos de duración de Click</th>
+                        <th>Consumo media mensual (CMM) en MWh</th>
+                        <th>CMM × Cobertura (MWh)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="period in clickPeriods" :key="period.key">
+                        <td>{{ period.label }}</td>
+                        <td>
+                          <div class="input-group input-group-sm">
+                            <input 
+                              class="form-control form-control-sm" 
+                              type="number" 
+                              inputmode="decimal" 
+                              step="0.01" 
+                              min="0"
+                              :value="getPeriodCmm(period.key)"
+                              @input="updatePeriodCmm(period.key, $event.target.value)"
+                              placeholder="0.00" 
+                              style="min-width: 150px;"
+                              :disabled="loadingCmm"
+                            />
+                            <span v-if="loadingCmm" class="input-group-text">
+                              <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <input 
+                            class="form-control form-control-sm" 
+                            type="text" 
+                            :value="getCmmWithCoverage(period.key).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })"
+                            readonly
+                            style="min-width: 150px; background-color: #f8f9fa;"
+                          />
+                        </td>
+                      </tr>
+                      <tr v-if="clickPeriods.length === 0">
+                        <td colspan="3" class="text-center text-muted">No hay periodos disponibles</td>
+                      </tr>
+                      <tr v-if="clickPeriods.length > 0" class="table-active fw-bold">
+                        <td>TOTAL</td>
+                        <td>
+                          {{ totalVolumeWithoutCoverage.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} MWh
+                        </td>
+                        <td>
+                          {{ totalVolume.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} MWh
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -675,11 +1052,22 @@ function onRemove(key) { emit('remove', key) }
         </div>
 
         <div class="mc-footer">
-          <button class="btn btn-outline-secondary" @click="$emit('close')">Cancelar</button>
-          <button class="btn btn-primary" :disabled="!canSubmit || isSubmitting" @click="blockSubmit">
-            <span v-if="isSubmitting">Enviando…</span>
-            <span v-else>Aceptar y enviar</span>
-          </button>
+          <!-- Botones del paso 1 -->
+          <template v-if="currentStep === 1">
+            <!-- <button class="btn btn-outline-secondary" @click="$emit('close')">Cancelar</button> -->
+            <button class="btn btn-primary" :disabled="!canGoToNextStep" @click="nextStep">
+              Siguiente
+            </button>
+          </template>
+          
+          <!-- Botones del paso 2 -->
+          <template v-if="currentStep === 2">
+            <button class="btn btn-outline-secondary" @click="prevStep">Atrás</button>
+            <button class="btn btn-primary" :disabled="!canSubmit || isSubmitting" @click="blockSubmit">
+              <span v-if="isSubmitting">Enviando…</span>
+              <span v-else>Enviar</span>
+            </button>
+          </template>
         </div>
       </div>
     </div>
@@ -760,6 +1148,8 @@ function onRemove(key) { emit('remove', key) }
 .mc-footer {
   border-top: 1px solid #eef2f7;
   border-bottom: none;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 .mc-body {
@@ -818,5 +1208,111 @@ function onRemove(key) { emit('remove', key) }
 
 .input-group-text {
   background: #f8fafc;
+}
+
+/* Estilos del wizard */
+.wizard-steps {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.step-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  position: relative;
+  flex: 1;
+  max-width: 200px;
+}
+
+.step-indicator::after {
+  content: '';
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: #e5e7eb;
+  z-index: 0;
+}
+
+.step-indicator:last-child::after {
+  display: none;
+}
+
+.step-indicator.completed::after {
+  background: #0d6efd;
+}
+
+.step-number {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: #e5e7eb;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  position: relative;
+  z-index: 1;
+  transition: all 0.3s ease;
+}
+
+.step-indicator.active .step-number {
+  background: #0d6efd;
+  color: #fff;
+}
+
+.step-indicator.completed .step-number {
+  background: #198754;
+  color: #fff;
+}
+
+.step-label {
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.step-indicator.active .step-label {
+  color: #0d6efd;
+  font-weight: 600;
+}
+
+.step-indicator.completed .step-label {
+  color: #198754;
+}
+
+.wizard-step {
+  min-height: 300px;
+}
+
+.spinner-border-sm {
+  width: 1rem;
+  height: 1rem;
+  border-width: 0.15em;
+}
+
+.spinner-border {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  vertical-align: text-bottom;
+  border: 0.15em solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spinner-border 0.75s linear infinite;
+}
+
+@keyframes spinner-border {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

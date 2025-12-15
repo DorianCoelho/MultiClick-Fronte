@@ -23,7 +23,7 @@ const page = ref(1)
 const pageSize = ref(20)
 const totalPages = computed(() => Math.max(1, Math.ceil((total.value || 0) / pageSize.value)))
 
-/* Filtros “ligeros” como Propuestas */
+/* Filtros "ligeros" como Propuestas */
 const search = ref('')         // Busca por ContractNo o CUPS (auto-detecta)
 const status = ref('')         // dropdown
 function resetFilters() {
@@ -68,7 +68,6 @@ function isSegestion(row, type) {
 }
 function rowClass(row) {
   return {
-    'row-propuesta': isDocType(row, 'Propuesta'),
     'row-contrato':  isDocType(row, 'Contrato'),
   }
 }
@@ -96,7 +95,7 @@ function showToast(text, type = 'success', ms = 2200) {
   tHandle = setTimeout(() => toast.show = false, ms)
 }
 
-/* Detección simple de CUPS vs Contrato para el “search” */
+/* Detección simple de CUPS vs Contrato para el "search" */
 function splitSearch() {
   const q = search.value.trim()
   if (!q) return { contractNo: '', cups: '' }
@@ -105,7 +104,7 @@ function splitSearch() {
   return { contractNo: q, cups: '' }
 }
 
-/* Cargar datos */
+/* Cargar datos - FILTRADO SOLO CONTRATOS */
 async function load() {
   error.value = ''
   rows.value = []
@@ -136,7 +135,7 @@ async function load() {
         : Array.isArray(data?.result) ? data.result
           : []
     
-    // 👇 MAPEAR TODOS LOS ITEMS
+    // 👇 FILTRAR SOLO CONTRATOS
     const allItems = items.map(x => ({
       contractNo: x.contractNo ?? x.ContractNo,
       customerNo: x.customerNo ?? x.CustomerNo,
@@ -161,17 +160,17 @@ async function load() {
       p6: Number(x.p6 ?? x.P6),
     }))
     
-    // 👇 FILTRAR SOLO PROPUESTAS
-    const propuestasOnly = allItems.filter(item => 
-      String(item.multiClickDocumentType || '').toLowerCase() === 'propuesta'
+    // Filtrar solo Contratos
+    const contratosOnly = allItems.filter(item => 
+      String(item.multiClickDocumentType || '').toLowerCase() === 'contrato'
     )
     
-    rows.value = propuestasOnly
+    rows.value = contratosOnly
 
-    // Ajustar total basado en las propuestas filtradas
-    total.value = propuestasOnly.length
-    if (!total.value && propuestasOnly.length > 0) {
-      total.value = (page.value - 1) * pageSize.value + propuestasOnly.length + (propuestasOnly.length === pageSize.value ? pageSize.value : 0)
+    // Ajustar total basado en los contratos filtrados
+    total.value = contratosOnly.length
+    if (!total.value && contratosOnly.length > 0) {
+      total.value = (page.value - 1) * pageSize.value + contratosOnly.length + (contratosOnly.length === pageSize.value ? pageSize.value : 0)
     }
   } catch (e) {
     error.value = e?.response?.data || e?.message || 'No se pudo cargar la lista.'
@@ -308,21 +307,6 @@ function closePdf() {
   pdfError.value = ''
   revokePdfUrl()
 }
-async function downloadFromRow(row) {
-  const id = getRowPdfId(row)
-  if (!id) { showToast('No hay multiClickDocumentNo para esta fila.', 'error'); return }
-  try {
-    const base64 = await fetchPdfBase64ById(id)
-    const url = base64ToBlobUrl(base64)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${id}.pdf`
-    document.body.appendChild(a); a.click(); a.remove()
-    URL.revokeObjectURL(url)
-  } catch (e) {
-    showToast(e?.response?.data?.message || e?.message || 'No se pudo descargar el PDF', 'error', 3500)
-  }
-}
 function downloadFromModal() {
   if (!pdfUrl.value) return
   const a = document.createElement('a')
@@ -330,8 +314,6 @@ function downloadFromModal() {
   a.download = `${currentPdfId.value || 'documento'}.pdf`
   document.body.appendChild(a); a.click(); a.remove()
 }
-
-// downloadFromRow is unused, so it can be removed to avoid the warning
 
 async function openOperationPdfModal(row) {
   const id = row?.multiClickDocumentNo
@@ -368,11 +350,11 @@ onMounted(() => window.addEventListener('keydown', onKey))
   <DashboardLayout>
     <div class="page">
       <header class="header">
-        <h1>Propuestas MultiClick</h1>
-        <p class="muted">Listado de Propuestas de Multiclick</p>
+        <h1>Contratos MultiClick</h1>
+        <p class="muted">Listado de Contratos de Multiclick</p>
       </header>
 
-      <!-- Controles estilo “Propuestas” -->
+      <!-- Controles estilo "Propuestas" -->
       <section class="controls">
         <input v-model="search" type="search" class="input" placeholder="Buscar por Contrato o CUPS"
           aria-label="Buscar" />
@@ -411,7 +393,6 @@ onMounted(() => window.addEventListener('keydown', onKey))
               <tr v-for="r in rows" :key="r.contractNo + '|' + r.cups" :class="rowClass(r)">
                 <td class="mono">
                   <small class="muted d-block">
-                    
                     <a 
                       href="#" 
                       @click.prevent="router.push({ name: 'MultiClickDetails', query: { contractNo: r.contractNo, customerNo: r.customerNo } })"
@@ -545,7 +526,7 @@ onMounted(() => window.addEventListener('keydown', onKey))
 <style scoped>
   .font-size-small{
     font-size: 0.70rem;
-  
+
   }
 .page {
   display: grid;
@@ -888,16 +869,7 @@ onMounted(() => window.addEventListener('keydown', onKey))
 }
 /* Opcional: centra verticalmente el contenido de todas las celdas */
 .table td { vertical-align: middle; }
-/* Colores por tipo de documento */
-.table tbody tr.row-propuesta {
-  background: #f0f9ff;            /* azul muy suave */
-  border-left: 4px solid #38bdf8; /* cian */
-}
-.table tbody tr.row-propuesta td {
-  /* color ligeramente más oscuro para mejor contraste */
-  color: #1e3a8a;
-}
-
+/* Colores por tipo de documento - Solo Contratos */
 .table tbody tr.row-contrato {
   background: #f0fdf4;            /* verde muy suave */
   border-left: 4px solid #34d399; /* verde */
@@ -908,9 +880,6 @@ onMounted(() => window.addEventListener('keydown', onKey))
 }
 
 /* Si quieres que se note incluso al pasar el ratón */
-.table tbody tr.row-propuesta:hover {
-  background: #e0f2fe;
-}
 .table tbody tr.row-contrato:hover {
   background: #dcfce7;
 }
