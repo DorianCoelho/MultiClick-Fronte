@@ -7,7 +7,8 @@ export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: localStorage.getItem('token') || null,
     user: JSON.parse(localStorage.getItem('user') || 'null'),
-    isFirstLogin: localStorage.getItem('isFirstLogin') === 'true'
+    isFirstLogin: localStorage.getItem('isFirstLogin') === 'true',
+    coverage: localStorage.getItem('coverage') || null
   }),
   getters: {
     isAuthenticated: (s) => !!s.token
@@ -20,6 +21,12 @@ export const useAuthStore = defineStore('auth', {
       this.user = data.user ?? null
       console.log("data.user", data.user)
       this.isFirstLogin = !!(data.user?.isFirstLogin ?? data.user?.IsFirstLogin)
+      // Guardar Coverage si viene en la respuesta (puede venir en data.coverage, data.Coverage, o data.user.coverage)
+      const coverage = data.coverage ?? data.Coverage ?? data.user?.coverage ?? data.user?.Coverage ?? null
+      if (coverage != null) {
+        this.coverage = coverage
+        localStorage.setItem('coverage', String(coverage))
+      }
       localStorage.setItem('token', this.token)
       localStorage.setItem('user', JSON.stringify(this.user))
       localStorage.setItem('isFirstLogin', this.isFirstLogin.toString())
@@ -37,9 +44,11 @@ export const useAuthStore = defineStore('auth', {
       this.token = null
       this.user = null
       this.isFirstLogin = false
+      this.coverage = null
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       localStorage.removeItem('isFirstLogin')
+      localStorage.removeItem('coverage')
     }
   }
 })

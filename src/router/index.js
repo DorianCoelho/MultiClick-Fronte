@@ -15,6 +15,8 @@ import ProposalDetails from '@/pages/ProposalDetails.vue'
 import ProposalDetailsMulti from '@/pages/ProposalDetailsMulti.vue'
 import Contracts from '@/pages/Contracts.vue'
 import Proposals from '@/pages/Proposals.vue'
+import MultiClickDetails from '@/pages/MultiClickDetails.vue'
+import MultiClickContracts from '@/pages/MultiClickContracts.vue'
 
 // Define rutas y marca cuáles requieren auth
 const routes = [
@@ -35,6 +37,8 @@ const routes = [
   { path: '/proposals/:proposalId',  name: 'ProposalDetails',  component: ProposalDetails,  meta: { requiresAuth: true } },
   { path: '/proposals-multi/:proposalId',  name: 'ProposalDetailsMulti',  component: ProposalDetailsMulti,  meta: { requiresAuth: true } },
   { path: '/contracts', name: 'Contracts', component: Contracts, meta: { requiresAuth: true } },
+  { path: '/multiclick-contracts', name: 'MultiClickContracts', component: MultiClickContracts, meta: { requiresAuth: true } },
+  { path: '/multiclick-details', name: 'MultiClickDetails', component: MultiClickDetails, meta: { requiresAuth: true } },
   { path: '/change-password-validator/:token(.*)', name: 'change-password-validator', component: ChangePasswordValidator },
   { path: '/change-password', name: 'change-password-form', component: ChangePasswordForm },
 
