@@ -52,6 +52,17 @@ const currentStep = ref(1)
 const auth = useAuthStore()
 const coverage = ref('')
 
+// Computed para obtener el nombre completo del marketer
+const marketerFullName = computed(() => {
+  const marketer = config.MARKETER || localStorage.getItem('marketer') || ''
+  if (marketer.toUpperCase() === 'NAB') {
+    return 'NABALIA ENERGIA 2000, S.A.'
+  } else if (marketer.toUpperCase() === 'ACIS') {
+    return 'ACIS ENERGÍA, S.A.'
+  }
+  return marketer
+})
+
 
 const average = (values) => {
   const v = values.map(Number).filter(x => Number.isFinite(x))
@@ -1049,6 +1060,13 @@ function onRemove(key) { emit('remove', key) }
           <div v-if="formError" class="alert alert-warning mt-3 mb-0">
             {{ formError }}
           </div>
+
+          <!-- Texto legal antes del botón (solo en paso 2) -->
+          <div v-if="currentStep === 2" class="legal-text mt-4 p-3">
+            <p class="mb-0 text-justify">
+              Al pulsar el botón "Solicitar Click", solicito expresamente a {{ marketerFullName }}, oferta comercial de precio fijo para un Click conforme a las características que constan expresadas en el presente formulario, bajo mi contrato de suministro eléctrico activo, y el producto E-PRO Multiclick contratado por mi parte.
+            </p>
+          </div>
         </div>
 
         <div class="mc-footer">
@@ -1064,8 +1082,8 @@ function onRemove(key) { emit('remove', key) }
           <template v-if="currentStep === 2">
             <button class="btn btn-outline-secondary" @click="prevStep">Atrás</button>
             <button class="btn btn-primary" :disabled="!canSubmit || isSubmitting" @click="blockSubmit">
-              <span v-if="isSubmitting">Enviando…</span>
-              <span v-else>Enviar</span>
+              <span v-if="isSubmitting">Solicitando…</span>
+              <span v-else>Solicitar Click</span>
             </button>
           </template>
         </div>
@@ -1314,5 +1332,20 @@ function onRemove(key) { emit('remove', key) }
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Estilos para el texto legal */
+.legal-text {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #495057;
+}
+
+.legal-text p {
+  margin: 0;
+  text-align: justify;
 }
 </style>
