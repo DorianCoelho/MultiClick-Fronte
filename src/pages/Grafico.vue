@@ -181,7 +181,7 @@ async function loadLastContractIndex() {
   feeEnergy.value = 0
   feeLoaded.value = true
   try {
-    const { data } = await api.get('/v1/ContractCliente/LastContractIndex', {
+    const { data } = await api.get('/v1/ContractCliente/LastsContractIndex', {
       params: { customerNo: customerNo.value, marketer: config.MARKETER }
     })
     const result = data
@@ -888,23 +888,18 @@ async function onSubmitModal(payload) {
   console.log('📤 Enviando SendProposalByUser con los siguientes datos:', JSON.stringify(payload, null, 2))
   console.log('📊 Detalle del payload:', payload)
   try {
-    // Obtener Coverage desde localStorage
-    const coverage = auth.coverage ?? localStorage.getItem('coverage')
-    const coverageNum = coverage != null ? Number(coverage) : 0
-    
     // Obtener IP y Device
     const ipAddress = await getPublicIP()
     const device = getDeviceType()
     
-    // Añadir los 3 campos al payload
+    // Añadir IP y Device al payload (coverage ya viene del formulario)
     const enrichedPayload = {
       ...payload,
-      coverage: coverageNum,
       ipAddress: ipAddress,
       device: device
     }
     
-    console.log('📤 Payload enriquecido con Coverage, IP y Device:', JSON.stringify(enrichedPayload, null, 2))
+    console.log('📤 Payload enriquecido con IP y Device:', JSON.stringify(enrichedPayload, null, 2))
     
     const res = await api.post('/v1/MultiClick/SendProposalByUser', enrichedPayload, {
       headers: { 'Content-Type': 'application/json' }
@@ -914,7 +909,6 @@ async function onSubmitModal(payload) {
 
     if (res.data.success) {
       showToast(`Orden de compra creada con éxito Nº ${res.data.contractNo}`, 'success')
-      showModal.value = false
       // Limpiar selección
       selectedSet.clear()
       modalPoints.value = []
@@ -939,6 +933,10 @@ async function onSubmitModal(payload) {
       'Ocurrió un error inesperado'
     
     showToast(`Error: ${errorMessage}`, 'error')
+  } finally {
+    // Siempre cerrar el modal después de la petición (éxito o error)
+    // Esto asegura que el botón se desbloquee
+    showModal.value = false
   }
 }
 

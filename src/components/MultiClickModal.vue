@@ -5,8 +5,6 @@ import config from '@/config/env'
 import { useAuthStore } from '@/stores/auth'
 
 const isSubmitting = ref(false)
-let submitTimerId = null
-const LOCK_MS = 3000  // 3 segundos para mostrar "Enviando…"
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -31,6 +29,9 @@ const formError = ref('')
 const userName = ref('')
 const cif = ref('')
 const contractNo = ref('')
+
+// Mapa para relacionar CUPS con su contrato
+const cupsToContractMap = ref(new Map())
 
 // Nuevos campos para mes inicio/fin
 const startMonth = ref('')
@@ -526,9 +527,10 @@ const canSubmit = computed(() => {
   return true
 })
 
-/* ========= NUEVO: cargar CUPS desde LastContractIndex ========= */
+/* ========= NUEVO: cargar CUPS desde LastsContractIndex ========= */
 async function loadCups() {
   cupsOptions.value = []
+  cupsToContractMap.value.clear()
   loadError.value = ''
   if (!props.customerNo) {
     loadError.value = 'No hay CustomerId en sesión.'
@@ -536,45 +538,65 @@ async function loadCups() {
   }
   loadingCups.value = true
   try {
-    const { data } = await api.get('/v1/ContractCliente/LastContractIndex', {
+    const { data } = await api.get('/v1/ContractCliente/LastsContractIndex', {
       params: { customerNo: String(props.customerNo), marketer: config.MARKETER }
     })
 
-
-    if (!data) {
-      loadError.value = 'El cliente no tiene contrato Index activo.'
+    // Ahora data es una lista de contratos
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      loadError.value = 'El cliente no tiene contratos Index activos.'
       cups.value = ''
       return
     }
 
-    const multicups = data.multicups ?? data.Multicups ?? false
-    const list = data.multiCupsList ?? data.MultiCupsList ?? null
-    const singleCup = data.customerCUPS ?? data.CustomerCUPS ?? ''
-    userName.value = data.customerName ?? data.CustomerName ?? ''
-    cif.value = data.vatRegistrationNo ?? data.VatRegistrationNo ?? ''
-    contractNo.value = data.no ?? data.No ?? ''
-    multicupsEnabled.value = multicups
+    // Procesar cada contrato de la lista
+    const cupsArray = []
+    let hasMulticups = false
+    
+    data.forEach(contract => {
+      const multicups = contract.multicups ?? contract.Multicups ?? false
+      const list = contract.multiCupsList ?? contract.MultiCupsList ?? null
+      const singleCup = contract.customerCUPS ?? contract.CustomerCUPS ?? ''
+      const contractNumber = contract.no ?? contract.No ?? ''
+      
+      // Guardar datos comunes del primer contrato
+      if (cupsArray.length === 0) {
+        userName.value = contract.customerName ?? contract.CustomerName ?? ''
+        cif.value = contract.vatRegistrationNo ?? contract.VatRegistrationNo ?? ''
+      }
+      
+      if (multicups) {
+        hasMulticups = true
+        const cupsList = Array.isArray(list) ? list.filter(Boolean) : []
+        cupsList.forEach(cup => {
+          if (!cupsArray.includes(cup)) {
+            cupsArray.push(cup)
+            cupsToContractMap.value.set(cup, contractNumber)
+          }
+        })
+      } else if (singleCup) {
+        if (!cupsArray.includes(singleCup)) {
+          cupsArray.push(singleCup)
+          cupsToContractMap.value.set(singleCup, contractNumber)
+        }
+      }
+    })
 
+    multicupsEnabled.value = hasMulticups
 
-    let arr = []
-    if (multicups) {
-      arr = Array.isArray(list) ? list.filter(Boolean) : []
-    } else if (singleCup) {
-      arr = [singleCup]
-    }
-
-    if (!arr.length) {
-      loadError.value = 'No se encontraron CUPS en el contrato.'
+    if (cupsArray.length === 0) {
+      loadError.value = 'No se encontraron CUPS en los contratos.'
       cups.value = ''
       cupsOptions.value = []
       return
     }
 
-    cupsOptions.value = arr
+    cupsOptions.value = cupsArray
 
     // Preselección por query si coincide, luego autoseleccionar si solo hay uno
-    if (props.prefilledCups && arr.includes(props.prefilledCups)) {
+    if (props.prefilledCups && cupsArray.includes(props.prefilledCups)) {
       cups.value = props.prefilledCups
+      contractNo.value = cupsToContractMap.value.get(props.prefilledCups) || ''
       // Validar solapamiento
       await nextTick()
       const overlapResult = checkDateOverlap(cups.value)
@@ -590,8 +612,9 @@ async function loadCups() {
           hasOverlap.value = true
         }
       }
-    } else if (arr.length === 1) {
-      cups.value = arr[0]
+    } else if (cupsArray.length === 1) {
+      cups.value = cupsArray[0]
+      contractNo.value = cupsToContractMap.value.get(cupsArray[0]) || ''
       // Validar solapamiento automáticamente
       await nextTick()
       const overlapResult = checkDateOverlap(cups.value)
@@ -609,10 +632,11 @@ async function loadCups() {
       }
     } else {
       cups.value = ''
+      contractNo.value = ''
     }
   } catch (e) {
-    console.error('Error cargando LastContractIndex:', e)
-    loadError.value = e?.response?.data?.message || 'No se pudieron cargar los CUPS desde el contrato.'
+    console.error('Error cargando LastsContractIndex:', e)
+    loadError.value = e?.response?.data?.message || 'No se pudieron cargar los CUPS desde los contratos.'
   } finally {
     loadingCups.value = false
     // Activar el modal después de que se complete la carga
@@ -623,9 +647,8 @@ async function loadCups() {
 
 watch(() => props.show, async (v) => {
   if (!v) {
+    // Resetear estado al cerrar el modal
     isSubmitting.value = false
-    if (submitTimerId) { clearTimeout(submitTimerId); submitTimerId = null }
-    // Limpiar errores al cerrar
     overlapError.value = ''
     hasOverlap.value = false
     showSimpleModal.value = false
@@ -725,6 +748,13 @@ watch(cups, async (newCups, oldCups) => {
   // Solo validar si el modal está abierto y el CUPS cambió
   if (!props.show || newCups === oldCups) return
   
+  // Actualizar el número de contrato según el CUPS seleccionado
+  if (newCups && cupsToContractMap.value.has(newCups)) {
+    contractNo.value = cupsToContractMap.value.get(newCups)
+  } else {
+    contractNo.value = ''
+  }
+  
   await validateCurrentCups()
 })
 
@@ -746,15 +776,7 @@ watch(cups, async (newCups) => {
 function blockSubmit() {
   if (isSubmitting.value) return
   isSubmitting.value = true
-
   onSubmit()
-
-
-  if (submitTimerId) { clearTimeout(submitTimerId); submitTimerId = null }
-  submitTimerId = setTimeout(() => {
-    isSubmitting.value = false
-    submitTimerId = null
-  }, LOCK_MS)
 }
 
 function onSubmit() {
@@ -1080,9 +1102,9 @@ function onRemove(key) { emit('remove', key) }
           
           <!-- Botones del paso 2 -->
           <template v-if="currentStep === 2">
-            <button class="btn btn-outline-secondary" @click="prevStep">Atrás</button>
+            <button class="btn btn-outline-secondary" @click="prevStep" :disabled="isSubmitting">Atrás</button>
             <button class="btn btn-primary" :disabled="!canSubmit || isSubmitting" @click="blockSubmit">
-              <span v-if="isSubmitting">Solicitando…</span>
+              <span v-if="isSubmitting">Enviando...</span>
               <span v-else>Solicitar Click</span>
             </button>
           </template>
