@@ -88,6 +88,25 @@ function fmtNum(n) {
 }
 function isSugerido(s) { return String(s || '').trim().toLowerCase() === 'sugerido' }
 
+/* Agrupar rows por contractNo para visualización */
+const groupedRows = computed(() => {
+  const groups = new Map()
+  
+  rows.value.forEach(row => {
+    const contractNo = row.contractNo || 'Sin contrato'
+    if (!groups.has(contractNo)) {
+      groups.set(contractNo, [])
+    }
+    groups.get(contractNo).push(row)
+  })
+  
+  // Convertir a array de objetos { contractNo, rows }
+  return Array.from(groups.entries()).map(([contractNo, rows]) => ({
+    contractNo,
+    rows
+  }))
+})
+
 /* Toast */
 const toast = reactive({ show: false, text: '', type: 'success' })
 let tHandle
@@ -126,6 +145,7 @@ async function load() {
         status: status.value || undefined,    // 👈 igual aquí
         orderBy,
         pageNumber: page.value,
+        multiClickDocumentType: 'Propuesta',
         pageSize: pageSize.value
       }
     })
@@ -396,7 +416,7 @@ onMounted(() => window.addEventListener('keydown', onKey))
               <tr>
                 <th @click="toggleSort('ContractNo')" :class="thClass('ContractNo')">Contrato</th>
                 <th>CUPS</th>
-                <th>No. referencia operación</th>
+                <th>Nº. Solicitud Operación</th>
                 <th @click="toggleSort('Rate')" :class="thClass('Rate')">Tarifa</th>
                 <th class="text-center">Precio Referencia OMIP</th>
                 <!-- <th>Fee</th> -->
@@ -408,71 +428,81 @@ onMounted(() => window.addEventListener('keydown', onKey))
               </tr>
             </thead>
             <tbody>
-              <tr v-for="r in rows" :key="r.contractNo + '|' + r.cups" :class="rowClass(r)">
-                <td class="mono">
-                  <small class="muted d-block">
+              <template v-for="group in groupedRows" :key="group.contractNo">
+                <!-- Fila de encabezado del grupo -->
+                <tr class="group-header">
+                  <td colspan="10" class="group-header-cell">
+                    <strong>Contrato: {{ group.contractNo }}</strong>
+                    <span class="group-count">({{ group.rows.length }} {{ group.rows.length === 1 ? 'propuesta' : 'propuestas' }})</span>
+                  </td>
+                </tr>
+                <!-- Filas del grupo -->
+                <tr v-for="r in group.rows" :key="r.contractNo + '|' + r.cups + '|' + r.multiClickDocumentNo" :class="rowClass(r)">
+                  <td class="mono">
+                    <small class="muted d-block">
+                      
+                      <a 
+                        href="#" 
+                        @click.prevent="router.push({ name: 'MultiClickDetails', query: { contractNo: r.contractNo, customerNo: r.customerNo } })"
+                        class="link-document"
+                        :title="`Ver detalles del documento ${r.multiClickDocumentNo}`">
+                        {{ r.multiClickDocumentNo }}
+                      </a>
+                    </small>
                     
+                    <small class="muted d-block font-size-small">
+                      {{ r.contractNo }}
+                    </small>
+                  </td>
+                  <td class="mono">{{ r.cups }}</td>
+                  <td class="mono">
                     <a 
                       href="#" 
-                      @click.prevent="router.push({ name: 'MultiClickDetails', query: { contractNo: r.contractNo, customerNo: r.customerNo } })"
+                      @click.prevent="openOperationPdfModal(r)"
                       class="link-document"
-                      :title="`Ver detalles del contrato ${r.contractNo}`">
-                      {{ r.multiClickDocumentNo }}
+                      :title="`Ver PDF de operación ${r.refApplicationOperNo}`">
+                      {{ r.refApplicationOperNo }}
                     </a>
-                  </small>
-                  
-                  <small class="muted d-block font-size-small">
-                    {{ r.contractNo }}
-                  </small>
-                </td>
-                <td class="mono">{{ r.cups }}</td>
-                <td class="mono">
-                  <a 
-                    href="#" 
-                    @click.prevent="openOperationPdfModal(r)"
-                    class="link-document"
-                    :title="`Ver PDF de operación ${r.refApplicationOperNo}`">
-                    {{ r.refApplicationOperNo }}
-                  </a>
-                </td>
-                <td>{{ r.rateNo }}</td>
-                <td class="mono text-center">{{ fmtNum(r.selectedPrice) }}</td>
-                <!-- <td class="mono">{{ fmtNum(r.feeEnergy) }}</td> -->
-                <td>{{ r.duration }}</td>
-                <td>{{ fmtDate(r.startDate) }}</td>
-                <td>{{ fmtDate(r.endDate) }}</td>
-                <td>
-                  <span class="pill" :class="{ 'pill-sug': isSugerido(r.status) }">{{ r.status }}</span>
-                </td>
-                <td class="text-end">
-                  <div class="actions actions--end">
-                    <!-- Ver PDF en modal -->
-                    <button 
-                      class="icon-btn" 
-                      :class="{ 'loading': pdfLoadingRows.has(r.multiClickDocumentNo) }"
-                      :disabled="pdfLoadingRows.has(r.multiClickDocumentNo)"
-                      :title="pdfLoadingRows.has(r.multiClickDocumentNo) ? 'Cargando PDF...' : 'Ver PDF'" 
-                      @click="openPdfModal(r)">
-                      <svg v-if="!pdfLoadingRows.has(r.multiClickDocumentNo)" width="18" height="18" viewBox="0 0 24 24" fill="none">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" stroke="currentColor"
-                          stroke-width="2" fill="none" />
-                        <path d="M14 2v6h6" stroke="currentColor" stroke-width="2" fill="none" />
-                      </svg>
-                      <svg v-else class="spinner" width="18" height="18" viewBox="0 0 24 24" fill="none">
-                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="31.416" stroke-dashoffset="31.416" fill="none" opacity="0.3"/>
-                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="31.416" stroke-dashoffset="23.562" fill="none"/>
-                      </svg>
-                    </button>
+                  </td>
+                  <td>{{ r.rateNo }}</td>
+                  <td class="mono text-center">{{ fmtNum(r.selectedPrice) }}</td>
+                  <!-- <td class="mono">{{ fmtNum(r.feeEnergy) }}</td> -->
+                  <td>{{ r.duration }}</td>
+                  <td>{{ fmtDate(r.startDate) }}</td>
+                  <td>{{ fmtDate(r.endDate) }}</td>
+                  <td>
+                    <span class="pill" :class="{ 'pill-sug': isSugerido(r.status) }">{{ r.status }}</span>
+                  </td>
+                  <td class="text-end">
+                    <div class="actions actions--end">
+                      <!-- Ver PDF en modal -->
+                      <button 
+                        class="icon-btn" 
+                        :class="{ 'loading': pdfLoadingRows.has(r.multiClickDocumentNo) }"
+                        :disabled="pdfLoadingRows.has(r.multiClickDocumentNo)"
+                        :title="pdfLoadingRows.has(r.multiClickDocumentNo) ? 'Cargando PDF...' : 'Ver PDF'" 
+                        @click="openPdfModal(r)">
+                        <svg v-if="!pdfLoadingRows.has(r.multiClickDocumentNo)" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" stroke="currentColor"
+                            stroke-width="2" fill="none" />
+                          <path d="M14 2v6h6" stroke="currentColor" stroke-width="2" fill="none" />
+                        </svg>
+                        <svg v-else class="spinner" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="31.416" stroke-dashoffset="31.416" fill="none" opacity="0.3"/>
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="31.416" stroke-dashoffset="23.562" fill="none"/>
+                        </svg>
+                      </button>
 
-                    <button class="btn-ghost btn-ghost-custom" :class="statusRowClass(r)"
-                      :disabled="!isSugerido(r.status) || approving.has(`${r.customerNo}|${r.contractNo}|${r.cups}`)"
-                      @click="approve(r)"
-                      :title="isSugerido(r.status) ? 'Aprobar' : 'Solo disponible si el estado es Sugerido'">
-                      {{ approving.has(`${r.customerNo}|${r.contractNo}|${r.cups}`) ? 'Enviando…' : 'Aprobar' }}
-                    </button>
-                  </div>
-                </td>
-              </tr>
+                      <button class="btn-ghost btn-ghost-custom" :class="statusRowClass(r)"
+                        :disabled="!isSugerido(r.status) || approving.has(`${r.customerNo}|${r.contractNo}|${r.cups}`)"
+                        @click="approve(r)"
+                        :title="isSugerido(r.status) ? 'Aprobar' : 'Solo disponible si el estado es Sugerido'">
+                        {{ approving.has(`${r.customerNo}|${r.contractNo}|${r.cups}`) ? 'Enviando…' : 'Aprobar' }}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </template>
 
               <tr v-if="!loading && rows.length === 0">
                 <td colspan="10" class="empty">No hay resultados.</td>
@@ -936,5 +966,44 @@ onMounted(() => window.addEventListener('keydown', onKey))
   text-decoration: underline;
 }
 
+/* Estilos para agrupación visual por contractNo */
+.group-header {
+  background: #f8fafc;
+  border-top: 2px solid #3b82f6;
+  border-bottom: 2px solid #3b82f6;
+}
+
+.group-header-cell {
+  padding: 0.75rem 1rem !important;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  font-weight: 600;
+  color: #1e40af;
+  border-bottom: 2px solid #3b82f6;
+}
+
+.group-count {
+  margin-left: 0.5rem;
+  font-weight: 400;
+  color: #64748b;
+  font-size: 0.875rem;
+}
+
+/* Espaciado visual entre grupos */
+.group-header + tr {
+  border-top: 1px solid #e5e7eb;
+}
+
+/* Ajustar el borde izquierdo de las filas agrupadas */
+tbody tr:not(.group-header) {
+  border-left: 2px solid transparent;
+}
+
+tbody tr:not(.group-header):first-of-type {
+  border-left-color: #3b82f6;
+}
+
+tbody tr:not(.group-header):last-of-type {
+  border-bottom: 2px solid #e5e7eb;
+}
 
 </style>

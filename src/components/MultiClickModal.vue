@@ -947,12 +947,7 @@ function onRemove(key) { emit('remove', key) }
                 <input class="form-control" type="text" :value="cif" readonly />
               </div>
             </div>
-            <div class="row g-3 p-3 justify-content-center align-items-center">
-              <div class="col-12 col-md-6">
-                <label class="form-label">N.º Contrato</label>
-                <input class="form-control" type="text" :value="contractNo" readonly />
-              </div>
-            </div>
+
             <div class="row g-3 p-3 justify-content-center align-items-center">
               <div class="col-12 col-md-6">
                 <label class="form-label">CUPS <span class="text-danger">*</span></label>
@@ -971,7 +966,12 @@ function onRemove(key) { emit('remove', key) }
                 </div>
               </div>
             </div>
-
+            <div class="row g-3 p-3 justify-content-center align-items-center">
+              <div class="col-12 col-md-6">
+                <label class="form-label">N.º Contrato</label>
+                <input class="form-control" type="text" :value="contractNo" readonly />
+              </div>
+            </div>
             <div class="row g-3 p-3 justify-content-center align-items-center">
               <div class="col-12 col-md-6">
                 <label class="form-label">Precio referencia mercado (OMIP) <span class="text-danger">*</span></label>
