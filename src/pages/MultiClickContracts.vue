@@ -125,18 +125,21 @@ async function load() {
         status: status.value || undefined,    // 👈 igual aquí
         orderBy,
         pageNumber: page.value,
+        multiClickDocumentType: 'Contrato',
         pageSize: pageSize.value
       }
     })
 
-    // resto igual…
+    // La respuesta puede venir como array directo o dentro de un objeto
     const items = Array.isArray(data) ? data
       : Array.isArray(data?.items) ? data.items
         : Array.isArray(data?.result) ? data.result
           : []
     
-    // 👇 FILTRAR SOLO CONTRATOS
-    const allItems = items.map(x => ({
+    console.log('items recibidos:', items)
+    
+    // Mapear todos los items sin filtrar (mostrar todos los tipos de documentos)
+    rows.value = items.map(x => ({
       contractNo: x.contractNo ?? x.ContractNo,
       customerNo: x.customerNo ?? x.CustomerNo,
       refApplicationOperNo: x.refApplicationOperNo ?? x.RefApplicationOperNo,
@@ -145,7 +148,6 @@ async function load() {
       multiClickDocumentNo: x.multiClickDocumentNo ?? x.MultiClickDocumentNo,
       status: x.status ?? x.Status,
       rateNo: x.rateNo ?? x.RateNo,
-      refApplicationOperNo: x.refApplicationOperNo ?? x.RefApplicationOperNo,
       feeEnergy: Number(x.feeEnergy ?? x.FeeEnergy),
       selectedPrice: Number(x.selectedPrice ?? x.SelectedPrice),
       duration: x.duration ?? x.Duration,
@@ -160,17 +162,13 @@ async function load() {
       p6: Number(x.p6 ?? x.P6),
     }))
     
-    // Filtrar solo Contratos
-    const contratosOnly = allItems.filter(item => 
-      String(item.multiClickDocumentType || '').toLowerCase() === 'contrato'
-    )
-    
-    rows.value = contratosOnly
-
-    // Ajustar total basado en los contratos filtrados
-    total.value = contratosOnly.length
-    if (!total.value && contratosOnly.length > 0) {
-      total.value = (page.value - 1) * pageSize.value + contratosOnly.length + (contratosOnly.length === pageSize.value ? pageSize.value : 0)
+    // Ajustar total basado en los items recibidos
+    total.value = rows.value.length
+    // Si hay paginación en el backend, usar el total del backend si está disponible
+    if (data?.total != null) {
+      total.value = data.total
+    } else if (data?.totalCount != null) {
+      total.value = data.totalCount
     }
   } catch (e) {
     error.value = e?.response?.data || e?.message || 'No se pudo cargar la lista.'
@@ -378,7 +376,7 @@ onMounted(() => window.addEventListener('keydown', onKey))
               <tr>
                 <th @click="toggleSort('ContractNo')" :class="thClass('ContractNo')">Contrato</th>
                 <th>CUPS</th>
-                <th>No. referencia operación</th>
+                <th>Nº. Solicitud Operación</th>
                 <th @click="toggleSort('Rate')" :class="thClass('Rate')">Tarifa</th>
                 <th class="text-center">Precio Referencia OMIP</th>
                 <!-- <th>Fee</th> -->
