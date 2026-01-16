@@ -907,8 +907,18 @@ async function onSubmitModal(payload) {
 
     console.log('✅ Respuesta del servidor:', res.data)
 
-    if (res.data.success) {
-      showToast(`Orden de compra creada con éxito Nº ${res.data.contractNo}`, 'success')
+    // La respuesta puede venir con proposal o directamente
+    const proposal = res.data.proposal || res.data
+    
+    if (proposal && (res.data.success !== false)) {
+      // Extraer los IDs de la propuesta
+      const refApplicationOperNo = proposal.refApplicationOperNo ?? proposal.RefApplicationOperNo ?? ''
+      const multiClickDocumentNo = proposal.multiClickDocumentNo ?? proposal.MultiClickDocumentNo ?? ''
+      
+      // Construir el mensaje con los IDs
+      const successMessage = `Tu solicitud de click se ha registrado correctamente con ID ${refApplicationOperNo} y te hemos enviado la propuesta con ID ${multiClickDocumentNo} para tu firma`
+      
+      showToast(successMessage, 'success')
       // Limpiar selección
       selectedSet.clear()
       modalPoints.value = []
@@ -1231,7 +1241,7 @@ onMounted(async () => {
               <tr>
                 <th>Contrato</th>
                 <th>CUPS</th>
-                <th>No. referencia operación</th>
+                <th>Nº. Solicitud Operación</th>
                 <th>Tarifa</th>
                 <th class="text-center">Precio Referencia OMIP</th>
                 <!-- <th>Fee</th> -->
