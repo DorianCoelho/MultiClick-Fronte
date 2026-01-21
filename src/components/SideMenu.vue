@@ -17,7 +17,7 @@ const items = [
   { name: 'Multiclick', route: '/grafico', icon: 'bi-bar-chart' },
   { name: 'Propuestas', route: '/proposals', icon: 'bi-list' },
   { name: 'Contratos', route: '/contracts', icon: 'bi-file-earmark-text' },
-  //{ name: 'Contratos MultiClick', route: '/multiclick-contracts', icon: 'bi-file-earmark-check' },
+  { name: 'Contratos MultiClick', route: '/multiclick-contracts', icon: 'bi-file-earmark-check' },
   { name: 'Propuestas MultiClick', route: '/suggestions', icon: 'bi-lightbulb' },
   { name: 'Cups', route: '/cups', icon: 'bi-plug' }
 ]

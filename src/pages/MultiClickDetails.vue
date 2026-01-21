@@ -17,6 +17,44 @@ const loading = ref(false)
 const error = ref('')
 const contractData = ref(null)
 
+// Periodos según tarifa (ej: 2.0TD -> P1-P3; resto -> P1-P6)
+const activePeriods = computed(() => {
+  const rate = String(contractData.value?.rateNo || '').trim().toUpperCase()
+  if (!rate) return ['P1', 'P2', 'P3', 'P4', 'P5', 'P6']
+  // Casuística solicitada: 2.0TD no pinta P4, P5, P6
+  if (rate.startsWith('2')) return ['P1', 'P2', 'P3']
+  return ['P1', 'P2', 'P3', 'P4', 'P5', 'P6']
+})
+
+const periodRows = computed(() => {
+  const d = contractData.value
+  if (!d) return []
+  const valByKey = (k) => {
+    const key = String(k || '').toLowerCase() // P1 -> p1
+    return d[key]
+  }
+  return activePeriods.value.map(k => ({ key: k, value: valByKey(k) }))
+})
+
+// Computed para mostrar correctamente el tipo y número de documento
+const documentTypeDisplay = computed(() => {
+  if (!contractData.value) return '—'
+  const docType = String(contractData.value.multiclickDocumentType || '').toLowerCase()
+  if (docType === 'contrato') return 'Contrato'
+  if (docType === 'propuesta') return 'Propuesta'
+  return contractData.value.multiclickDocumentType || '—'
+})
+
+const documentNoDisplay = computed(() => {
+  if (!contractData.value) return '—'
+  const docType = String(contractData.value.multiclickDocumentType || '').toLowerCase()
+  // Si es Contrato, mostrar contractNo; si es Propuesta, mostrar multiclickDocumentNo
+  if (docType === 'contrato') {
+    return contractData.value.contractNo || '—'
+  }
+  return contractData.value.multiclickDocumentNo || '—'
+})
+
 // Helpers
 function fmtDate(dateLike) {
   if (!dateLike) return '—'
@@ -42,6 +80,11 @@ function fmtNum(n) {
   return Number.isFinite(v) ? v.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
 }
 
+function fmtNum6Digits(n) {
+  const v = Number(n)
+  return Number.isFinite(v) ? v.toLocaleString('es-ES', { minimumFractionDigits: 6, maximumFractionDigits: 6 }) : '—'
+}
+
 function fmtNumPercentage(n) {
   const v = Number(n)
   return Number.isFinite(v) ? `${v.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%` : '—'
@@ -53,6 +96,7 @@ async function loadContractDetails() {
   contractData.value = null
 
   const contractNo = route.query.contractNo
+  const proposalNo = route.query.proposalNo
   const customerNoParam = route.query.customerNo || customerNo.value
 
   if (!contractNo || !customerNoParam) {
@@ -65,7 +109,8 @@ async function loadContractDetails() {
     const { data } = await api.get('/v1/MultiClick/GetMultiClickEnergyContractByContract', {
       params: {
         customerNo: customerNoParam,
-        contractNo: contractNo
+        contractNo: contractNo,
+        proposalNo: proposalNo
       }
     })
 
@@ -129,6 +174,7 @@ async function loadContractDetails() {
         systemId: doc.systemId ?? doc.SystemId ?? ''
       }))
     }
+    console.log(contractData.value)
   } catch (e) {
     error.value = e?.response?.data?.message || e?.response?.data?.error || e?.message || 'No se pudo cargar el contrato'
     console.error('Error cargando detalles del contrato:', e)
@@ -273,7 +319,7 @@ onMounted(() => window.addEventListener('keydown', onKey))
           <div class="sub">
             <span class="badge-contract">{{ contractData?.contractNo || '—' }}</span>
             <span class="sep">•</span>
-            <span class="badge-doc">{{ contractData?.multiclickDocumentNo || '—' }}</span>
+            <span class="badge-doc">{{ documentNoDisplay }}</span>
             <span class="sep">•</span>
             <span class="pill" :class="{ 'pill-sug': contractData?.status?.toLowerCase() === 'sugerido' }">
               {{ contractData?.status || '—' }}
@@ -320,13 +366,25 @@ onMounted(() => window.addEventListener('keydown', onKey))
           <!-- Datos del Contrato -->
           <div class="info-card">
             <div class="card-header">
-              <h3 class="card-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                  <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
-                </svg>
-                Datos del Contrato
-              </h3>
+              <div class="card-header-top">
+                <h3 class="card-title">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+                  </svg>
+                  Datos del Contrato
+                </h3>
+                <!-- Precio destacado arriba junto al título -->
+                <div class="price-highlight-inline">
+                  <div class="price-item-inline">
+                    <span class="price-label-inline">Precio Ref. OMIP</span>
+                    <div class="price-value-inline">
+                      <strong>{{ fmtNum(contractData.selectedPrice) }}</strong>
+                      <span class="price-unit-inline">€/MWh</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="card-body">
               <div class="info-grid">
@@ -344,11 +402,11 @@ onMounted(() => window.addEventListener('keydown', onKey))
                 </div>
                 <div class="info-item">
                   <span class="info-label">Tipo Documento</span>
-                  <strong class="info-value">{{ contractData.multiclickDocumentType }}</strong>
+                  <strong class="info-value">{{ documentTypeDisplay }}</strong>
                 </div>
                 <div class="info-item">
                   <span class="info-label">N.º Documento</span>
-                  <strong class="info-value mono">{{ contractData.multiclickDocumentNo }}</strong>
+                  <strong class="info-value mono">{{ documentNoDisplay }}</strong>
                 </div>
                 <div class="info-item">
                   <span class="info-label">Estado</span>
@@ -392,79 +450,35 @@ onMounted(() => window.addEventListener('keydown', onKey))
             </div>
           </div>
 
-          <!-- Precios y Fees -->
-          <div class="info-card">
+          <!-- Precios por período (filtra periodos según tarifa) -->
+          <div class="info-card info-card-narrow">
             <div class="card-header">
               <h3 class="card-title">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="12" y1="1" x2="12" y2="23"/>
-                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                  <line x1="18" y1="20" x2="18" y2="10"/>
+                  <line x1="12" y1="20" x2="12" y2="4"/>
+                  <line x1="6" y1="20" x2="6" y2="14"/>
                 </svg>
-                Precios
+                Precios por período
               </h3>
             </div>
             <div class="card-body">
-              <div class="price-highlight">
-                <div class="price-item">
-                  <span class="price-label">Precio Seleccionado (OMIP)</span>
-                  <div class="price-value">
-                    <strong>{{ fmtNum(contractData.selectedPrice) }}</strong>
-                    <span class="price-unit">€/MWh</span>
-                  </div>
-                </div>
+              <div class="table-scroll">
+                <table class="table-modern">
+                  <thead>
+                    <tr>
+                      <th>Período</th>
+                      <th class="text-end">Valor (€/MWh)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="p in periodRows" :key="p.key">
+                      <td><span class="period-badge" :class="`period-${String(p.key).toLowerCase()}`">{{ p.key }}</span></td>
+                      <td class="text-end mono">{{ fmtNum6Digits(p.value) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Períodos P1-P6 -->
-        <div class="info-card">
-          <div class="card-header">
-            <h3 class="card-title">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="20" x2="18" y2="10"/>
-                <line x1="12" y1="20" x2="12" y2="4"/>
-                <line x1="6" y1="20" x2="6" y2="14"/>
-              </svg>
-              Períodos P1-P6
-            </h3>
-          </div>
-          <div class="card-body">
-            <div class="table-scroll">
-              <table class="table-modern">
-                <thead>
-                  <tr>
-                    <th>Período</th>
-                    <th class="text-end">Valor</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td><span class="period-badge period-p1">P1</span></td>
-                    <td class="text-end mono">{{ fmtNum(contractData.p1) }}</td>
-                  </tr>
-                  <tr>
-                    <td><span class="period-badge period-p2">P2</span></td>
-                    <td class="text-end mono">{{ fmtNum(contractData.p2) }}</td>
-                  </tr>
-                  <tr>
-                    <td><span class="period-badge period-p3">P3</span></td>
-                    <td class="text-end mono">{{ fmtNum(contractData.p3) }}</td>
-                  </tr>
-                  <tr>
-                    <td><span class="period-badge period-p4">P4</span></td>
-                    <td class="text-end mono">{{ fmtNum(contractData.p4) }}</td>
-                  </tr>
-                  <tr>
-                    <td><span class="period-badge period-p5">P5</span></td>
-                    <td class="text-end mono">{{ fmtNum(contractData.p5) }}</td>
-                  </tr>
-                  <tr>
-                    <td><span class="period-badge period-p6">P6</span></td>
-                    <td class="text-end mono">{{ fmtNum(contractData.p6) }}</td>
-                  </tr>
-                </tbody>
-              </table>
             </div>
           </div>
         </div>
@@ -821,6 +835,14 @@ onMounted(() => window.addEventListener('keydown', onKey))
   border-bottom: 1px solid #e5e7eb;
 }
 
+.card-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
 .card-title {
   display: flex;
   align-items: center;
@@ -829,6 +851,52 @@ onMounted(() => window.addEventListener('keydown', onKey))
   font-size: 1.125rem;
   font-weight: 600;
   color: #111827;
+}
+
+/* Precio destacado inline en el header */
+.price-highlight-inline {
+  display: flex;
+  align-items: center;
+}
+
+.price-item-inline {
+  padding: 0.75rem 1rem;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-radius: 0.5rem;
+  border: 1px solid #bfdbfe;
+}
+
+.price-label-inline {
+  display: block;
+  font-size: 0.7rem;
+  color: #3b82f6;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  margin-bottom: 0.25rem;
+}
+
+.price-value-inline {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.price-value-inline strong {
+  font-size: 1.25rem;
+  color: #1e40af;
+  font-weight: 700;
+}
+
+.price-unit-inline {
+  font-size: 0.75rem;
+  color: #60a5fa;
+  font-weight: 500;
+}
+
+/* Tarjeta más estrecha para precios por período */
+.info-card-narrow {
+  max-width: 400px;
 }
 
 .card-title svg {
