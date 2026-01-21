@@ -291,6 +291,50 @@ async function fetchOperationPdfBase64ById(id) {
   return base64
 }
 
+async function fetchContractPdfBase64ById(contractNo) {
+  // Endpoint ContractCliente ContractPdf (igual que en Contracts.vue)
+  const url = `/v1/ContractCliente/ContractPdf/${encodeURIComponent(contractNo)}/false`
+  const { data } = await api.get(url, { responseType: 'text' })
+  let base64 = typeof data === 'string' ? data : (data && data.base64) || ''
+  if (!base64) throw new Error('PDF vacío')
+  if (base64.startsWith('"')) {
+    try { base64 = JSON.parse(base64) } catch { }
+  }
+  return base64
+}
+
+async function openContractPdfModal(contractNo) {
+  if (!contractNo) { 
+    showToast('No hay número de contrato.', 'error')
+    return 
+  }
+  
+  const key = `contract-${contractNo}`
+  if (pdfLoadingRows.has(key)) return
+
+  pdfLoadingRows.add(key)
+  pdfLoading.value = true
+  pdfError.value = ''
+  currentPdfId.value = contractNo
+  revokePdfUrl()
+
+  try {
+    const base64 = await fetchContractPdfBase64ById(contractNo)
+    pdfUrl.value = base64ToBlobUrl(base64)
+    showPdf.value = true
+    requestAnimationFrame(() => {
+      const el = document.querySelector('.pdf-modal')
+      if (el && typeof el.focus === 'function') el.focus()
+    })
+  } catch (e) {
+    pdfError.value = e?.response?.data?.message || e?.message || 'No se pudo cargar el PDF del contrato'
+    showPdf.value = true
+  } finally {
+    pdfLoading.value = false
+    pdfLoadingRows.delete(key)
+  }
+}
+
 async function openPdfModal(row) {
   const id = getRowPdfId(row)
   if (!id) { showToast('No hay identificador de PDF para esta fila.', 'error'); return }
@@ -432,8 +476,27 @@ onMounted(() => window.addEventListener('keydown', onKey))
                 <!-- Fila de encabezado del grupo -->
                 <tr class="group-header">
                   <td colspan="10" class="group-header-cell">
-                    <strong>Contrato: {{ group.contractNo }}</strong>
-                    <span class="group-count">({{ group.rows.length }} {{ group.rows.length === 1 ? 'propuesta' : 'propuestas' }})</span>
+                    <div class="d-flex align-items-center justify-content-between">
+                      <div>
+                        <strong>Contrato: {{ group.contractNo }}</strong>
+                        <span class="group-count">({{ group.rows.length }} {{ group.rows.length === 1 ? 'propuesta' : 'propuestas' }})</span>
+                      </div>
+                      <button 
+                        class="icon-btn icon-btn-sm" 
+                        :class="{ 'loading': pdfLoadingRows.has(`contract-${group.contractNo}`) }"
+                        :disabled="pdfLoadingRows.has(`contract-${group.contractNo}`)"
+                        :title="pdfLoadingRows.has(`contract-${group.contractNo}`) ? 'Cargando PDF...' : 'Ver PDF del contrato'" 
+                        @click="openContractPdfModal(group.contractNo)">
+                        <svg v-if="!pdfLoadingRows.has(`contract-${group.contractNo}`)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" stroke="currentColor" stroke-width="2" />
+                          <path d="M14 2v6h6" stroke="currentColor" stroke-width="2" />
+                        </svg>
+                        <svg v-else class="spinner" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="31.416" stroke-dashoffset="31.416" fill="none" opacity="0.3"/>
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="31.416" stroke-dashoffset="23.562" fill="none"/>
+                        </svg>
+                      </button>
+                    </div>
                   </td>
                 </tr>
                 <!-- Filas del grupo -->
@@ -443,7 +506,7 @@ onMounted(() => window.addEventListener('keydown', onKey))
                       
                       <a 
                         href="#" 
-                        @click.prevent="router.push({ name: 'MultiClickDetails', query: { contractNo: r.contractNo, customerNo: r.customerNo } })"
+                        @click.prevent="router.push({ name: 'MultiClickDetails', query: { contractNo: r.contractNo, customerNo: r.customerNo, proposalNo: r.multiClickDocumentNo } })"
                         class="link-document"
                         :title="`Ver detalles del documento ${r.multiClickDocumentNo}`">
                         {{ r.multiClickDocumentNo }}
@@ -895,7 +958,20 @@ onMounted(() => window.addEventListener('keydown', onKey))
   border-radius: .5rem;
   border: 1px solid #e5e7eb;
   background: #fff;
-  
+}
+
+/* Botón Aprobar activo cuando estado es Sugerido */
+.btn-ghost-custom.row-status-sugerido:not(:disabled) {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #3730a3;
+  font-weight: 600;
+}
+
+.btn-ghost-custom.row-status-sugerido:not(:disabled):hover {
+  background: #c7d2fe;
+  border-color: #a5b4fc;
+  color: #312e81;
 }
 .btn-ghost-custom2{
   border-radius: .5rem;
@@ -981,11 +1057,24 @@ onMounted(() => window.addEventListener('keydown', onKey))
   border-bottom: 2px solid #3b82f6;
 }
 
+.group-header-cell .d-flex {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
 .group-count {
   margin-left: 0.5rem;
   font-weight: 400;
   color: #64748b;
   font-size: 0.875rem;
+}
+
+.icon-btn-sm {
+  width: 28px;
+  height: 28px;
+  padding: 0;
 }
 
 /* Espaciado visual entre grupos */

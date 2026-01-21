@@ -86,13 +86,14 @@ async function maybeShowFirstLoginModal () {
     const { data: accepted } = await api.get('/UserAcceptedProducts', {
       params: { userName: getUserName() }
     })
-    if (Array.isArray(accepted) && accepted.length > 0) {
+    
+    //if (Array.isArray(accepted) && accepted.length > 0) {
       // Ya estaba aceptado: marcamos que no es primer login y redirigir a grafico
       auth.user.isFirstLogin = false
       localStorage.setItem('auth', JSON.stringify({ token: auth.token, user: auth.user }))
       router.push('/grafico')
       return
-    }
+    //}
   } catch (e) {
     // Si falla, redirigir a grafico para no bloquear al usuario
     console.warn('No se pudo comprobar aceptaciones previas:', e)
