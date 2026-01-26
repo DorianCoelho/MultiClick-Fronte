@@ -263,7 +263,7 @@ function getCmmWithCoverage(periodKey) {
   const coverageNum = parseNumLike(coverage.value) || 0
   // Calcular: CMM * (Cobertura / 100)
   const result = cmm * (coverageNum / 100)
-  return Number(result.toFixed(2))
+  return Math.round(result) // Redondear a entero sin decimales
 }
 
 // Función para calcular fecha de inicio en formato YYYY-MM-DD
@@ -520,9 +520,9 @@ const canSubmit = computed(() => {
   if (price == null || price <= 0) { formError.value = 'Indica un precio válido.'; return false }
   if (!props.points.length) { formError.value = 'No hay puntos seleccionados.'; return false }
   
-  // Validar Coverage
+  // Validar Coverage (debe estar entre 1 y 100)
   const coverageNum = parseNumLike(coverage.value)
-  if (coverageNum == null || coverageNum < 0) { formError.value = 'Indica una Cobertura válido.'; return false }
+  if (coverageNum == null || coverageNum < 1 || coverageNum > 100) { formError.value = 'Indica un % de entre 1 y 100 en números enteros.'; return false }
   
   return true
 })
@@ -1001,21 +1001,22 @@ function onRemove(key) { emit('remove', key) }
                     <input class="form-control" type="text" :value="endDateFormatted" readonly />
                   </div>
                   <div class="col-12 col-md-4">
-                    <label class="form-label">Cobertura: <span class="text-danger">*</span></label>
+                    <label class="form-label">% Volumen energía a contratar <span class="text-danger">*</span></label>
                     <div class="input-group">
                       <input 
                         class="form-control" 
                         type="number" 
-                        inputmode="decimal" 
-                        step="0.01" 
-                        min="0" 
+                        inputmode="numeric" 
+                        step="1" 
+                        min="1" 
                         max="100"
-                        v-model="coverage"
-                        placeholder="Ej. 50.00"
+                        v-model.number="coverage"
+                        placeholder="Ej. 50"
+                        @input="coverage = Math.round($event.target.value) || ''"
                       />
                       <span class="input-group-text">%</span>
                     </div>
-                    <small class="text-muted">Porcentaje de cobertura del consumo (0-100%)</small>
+                    <small class="text-muted">Indicar un % de entre 1 y 100 en números enteros</small>
                   </div>
                 </div>
 
@@ -1054,7 +1055,7 @@ function onRemove(key) { emit('remove', key) }
                           <input 
                             class="form-control form-control-sm" 
                             type="text" 
-                            :value="getCmmWithCoverage(period.key).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })"
+                            :value="getCmmWithCoverage(period.key).toLocaleString('es-ES')"
                             readonly
                             style="min-width: 150px; background-color: #f8f9fa;"
                           />
@@ -1069,7 +1070,7 @@ function onRemove(key) { emit('remove', key) }
                           {{ totalVolumeWithoutCoverage.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} MWh
                         </td>
                         <td>
-                          {{ totalVolume.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} MWh
+                          {{ totalVolume.toLocaleString('es-ES') }} MWh
                         </td>
                       </tr>
                     </tbody>

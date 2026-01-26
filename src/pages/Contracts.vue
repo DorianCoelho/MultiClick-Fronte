@@ -56,7 +56,8 @@
                     <span class="tag" :class="(row.productType || 'na').toLowerCase()">
                       {{ row.productType || '—' }}
                     </span>
-                    <span class="prod-name">{{ row.rateNo || '—' }} <small>{{ row.times || '' }}</small></span>
+                    <span class="prod-name">{{ row.rateNo || '—' }}</span>
+                    <!-- <span class="prod-name">{{ row.rateNo || '—' }} <small>{{ row.times || '' }}</small></span> -->
                   </div>
                 </td>
                 <td><span class="pill" :class="statusClass(row.status)">{{ row.status || '—' }}</span></td>

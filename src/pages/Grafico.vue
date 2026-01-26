@@ -28,6 +28,80 @@ const feeLoaded = ref(false)    // para saber si ya preguntamos
 const multiclickRows = ref([])
 const multiclickLoading = ref(false)
 const multiclickError = ref('')
+const total = ref(0)
+const page = ref(1)
+const pageSize = ref(20)
+const totalPages = computed(() => Math.max(1, Math.ceil((total.value || 0) / pageSize.value)))
+
+/* Filtros */
+const search = ref('')         // Busca por ContractNo o CUPS (auto-detecta)
+const status = ref('')         // dropdown
+function resetFilters() {
+  search.value = ''
+  status.value = ''
+  page.value = 1
+}
+
+/* Ordenación por cabecera */
+const sort = reactive({ by: 'ContractNo', dir: 'desc' })
+function toggleSort(colKey) {
+  if (sort.by === colKey) sort.dir = (sort.dir === 'asc' ? 'desc' : 'asc')
+  else { sort.by = colKey; sort.dir = 'asc' }
+}
+const thClass = (key) => ({
+  sortable: true,
+  active: sort.by === key,
+  asc: sort.by === key && sort.dir === 'asc',
+  desc: sort.by === key && sort.dir === 'desc',
+})
+
+/* Mapeo a enum MultiClickEnergyContractsOrderBy */
+function toOrderByParam(by, dir) {
+  const desc = dir === 'desc'
+  switch (by) {
+    case 'CustomerName': return desc ? 'CustomerNameDesc' : 'CustomerName'
+    case 'Status': return desc ? 'StatusDesc' : 'Status'
+    case 'ContractNo': return desc ? 'ContractNoDesc' : 'ContractNo'
+    case 'StartDate': return desc ? 'StartDateDesc' : 'StartDate'
+    case 'EndDate': return desc ? 'EndDateDesc' : 'EndDate'
+    case 'Rate': return desc ? 'RateDesc' : 'Rate'
+    default: return desc ? 'ContractNoDesc' : 'ContractNo'
+  }
+}
+
+/* Detección simple de CUPS vs Contrato para el "search" */
+function splitSearch() {
+  const q = search.value.trim()
+  if (!q) return { contractNo: '', cups: '' }
+  // Si parece CUPS (empieza por ES + alfanumérico) lo mandamos como cups; si no, como contractNo
+  if (/^ES[0-9A-Z]/i.test(q)) return { contractNo: '', cups: q }
+  return { contractNo: q, cups: '' }
+}
+
+/* Agrupar rows por contractNo para visualización */
+const groupedRows = computed(() => {
+  const groups = new Map()
+  
+  multiclickRows.value.forEach(row => {
+    const contractNo = row.contractNo || 'Sin contrato'
+    if (!groups.has(contractNo)) {
+      groups.set(contractNo, [])
+    }
+    groups.get(contractNo).push(row)
+  })
+  
+  // Convertir a array de objetos { contractNo, rows }
+  return Array.from(groups.entries()).map(([contractNo, rows]) => ({
+    contractNo,
+    rows
+  }))
+})
+
+/* ===================== MultiClick Usage (para el gráfico / validaciones) ===================== */
+// Dataset independiente del listado, para que el gráfico no dependa de la tabla.
+const multiclickUsageRows = ref([])
+const multiclickUsageLoading = ref(false)
+const multiclickUsageError = ref('')
 
 /* ===================== PDF Modal ===================== */
 const showPdf = ref(false)
@@ -251,7 +325,7 @@ async function loadData() {
 
 // ===================== Periodos y granularidad =====================
 const allMonthKeys = ref([])     // todas las claves disponibles ordenadas (YYYY-MM)
-const baseMonthKeys = ref([])    // desde el mes siguiente al actual
+const baseMonthKeys = ref([])    // desde el mes "siguiente" según regla de corte (ver initPeriods)
 const periodKeys = ref([])       // lista visible según gran
 
 function addMonthsKey(key, delta) {
@@ -280,10 +354,17 @@ function initPeriods() {
   const all = Array.from(omipMap.keys()).sort()
   allMonthKeys.value = all
 
-  // "mes actual + 1" con Date para evitar líos de zona horaria / fin de mes
+  // Regla de meses (solo base para M/Q/S/Y):
+  // - Si hoy es día 25 o antes Y antes de las 12:00 → mostrar el mes siguiente (M)
+  // - Si hoy es día 25 desde las 12:00 o cualquier día posterior → mostrar el segundo mes siguiente (M+1)
+  // Usamos Date local para evitar líos de zona horaria / fin de mes.
   const today = new Date()
-  const firstOfNext = new Date(today.getFullYear(), today.getMonth() + 2, 1)
-  const nextKey = `${firstOfNext.getFullYear()}-${pad2(firstOfNext.getMonth() + 1)}`
+  const day = today.getDate()
+  const hour = today.getHours()
+  const useNextMonth = (day < 25) || (day === 25 && hour < 12)
+  const monthOffset = useNextMonth ? 1 : 2
+  const firstVisible = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1)
+  const nextKey = `${firstVisible.getFullYear()}-${pad2(firstVisible.getMonth() + 1)}`
 
   // límite superior: último mes que venga de la API; si no hay, usa nextKey
   const lastKey = all.length ? all[all.length - 1] : nextKey
@@ -505,24 +586,22 @@ const chartOptions = ref({
       // Si hay contrato, agregar footer de advertencia
       if (contract) {
         const contractStatus = contract.status
-        const blockingStates = ['Pendiente de aceptación', 'Aceptado', 'Sugerido']
-        const isBlockingState = blockingStates.includes(contractStatus)
+        // Solo "Aceptado" es morado (Click Aceptado), el resto es naranja (Click Pendientes)
+        const isAccepted = contractStatus === 'Aceptado'
         const isLowPrice = lowFiveSet.has(monthKey)
         
-        const message = isBlockingState 
-          ? '⚠️ Este punto ya tiene un click vigente' 
-          : '⚠️ Este punto ya tiene un Click'
+        const message = '⚠️ Este punto ya tiene un click vigente'
         const statusInfo = ` | Estado: ${contractStatus || 'N/A'}`
         
-        // Color del fondo según el estado (morado si bloqueante, naranja si no)
-        const bgColor = isBlockingState 
+        // Color del fondo según el estado (morado si "Aceptado", naranja si "Pendiente de aceptación" o "Sugerido")
+        const bgColor = isAccepted 
           ? 'linear-gradient(135deg, #7c3aed, #9333ea)' 
           : 'linear-gradient(135deg, #ff6b35, #ff8c42)'
-        const borderColor = isBlockingState ? '#a855f7' : '#ff9f6b'
+        const borderColor = isAccepted ? '#a855f7' : '#ff9f6b'
         
         // Si también es uno de los 5 precios más bajos, agregar nota sobre el borde
         const borderNote = isLowPrice 
-          ? `<br/><small>🟢 5 precios más bajos | Borde ${isBlockingState ? 'morado' : 'naranja'} = Click vigente</small>`
+          ? `<br/><small>🟢 5 precios más bajos | Borde ${isAccepted ? 'morado' : 'naranja'} = Click vigente</small>`
           : ''
         
         html += `<div class="tooltip-footer" style="background: ${bgColor}; border-top: 2px solid ${borderColor};">
@@ -602,11 +681,11 @@ function isMonthUsed(periodKey) {
   const months = expandPeriodToMonths(periodKey)
   
   // Si no hay meses o no hay contratos, no está ocupado
-  if (months.length === 0 || multiclickRows.value.length === 0) return false
+  if (months.length === 0 || multiclickUsageRows.value.length === 0) return false
   
   console.log(`🔍 Verificando periodo: ${periodKey}`)
   console.log(`📅 Meses expandidos:`, months)
-  console.log(`📋 Contratos disponibles:`, multiclickRows.value.length)
+  console.log(`📋 Contratos disponibles:`, multiclickUsageRows.value.length)
   
   // Verificar si ALGUNO de los meses está ocupado
   for (const monthKey of months) {
@@ -618,7 +697,7 @@ function isMonthUsed(periodKey) {
     checkDate.setHours(0, 0, 0, 0)
     
     // Verificar si este mes está dentro del rango de algún contrato
-    for (const contract of multiclickRows.value) {
+    for (const contract of multiclickUsageRows.value) {
       if (!contract.startDate || !contract.endDate) continue
       
       // Parsear fechas del contrato y normalizar a inicio de mes
@@ -652,7 +731,7 @@ function getContractForMonth(periodKey) {
   const months = expandPeriodToMonths(periodKey)
   
   // Si no hay meses o no hay contratos, retornar null
-  if (months.length === 0 || multiclickRows.value.length === 0) return null
+  if (months.length === 0 || multiclickUsageRows.value.length === 0) return null
   
   // Buscar el contrato en el primer mes ocupado
   for (const monthKey of months) {
@@ -664,7 +743,7 @@ function getContractForMonth(periodKey) {
     checkDate.setHours(0, 0, 0, 0)
     
     // Buscar el contrato que incluye este mes
-    for (const contract of multiclickRows.value) {
+    for (const contract of multiclickUsageRows.value) {
       if (!contract.startDate || !contract.endDate) continue
       
       // Parsear fechas del contrato y normalizar
@@ -695,11 +774,11 @@ function buildDiscreteMarkers(keys) {
         // Hay punto verde Y contrato: punto más pequeño con borde más grueso
         const contract = getContractForMonth(k)
         const contractStatus = contract?.status
-        const blockingStates = ['Pendiente de aceptación', 'Aceptado', 'Sugerido']
-        const isBlockingState = blockingStates.includes(contractStatus)
+        // Solo "Aceptado" es morado (Click Aceptado), el resto es naranja (Click Pendientes)
+        const isAccepted = contractStatus === 'Aceptado'
         
-        // Usar color morado si es bloqueante, naranja si no
-        const borderColor = isBlockingState ? colorUsed : colorUsedOther
+        // Usar color morado si es "Aceptado", naranja si es "Pendiente de aceptación" o "Sugerido"
+        const borderColor = isAccepted ? colorUsed : colorUsedOther
         disc.push({ 
           seriesIndex: 0, 
           dataPointIndex: idx, 
@@ -723,11 +802,11 @@ function buildDiscreteMarkers(keys) {
       // Solo punto usado (sin verde)
       const contract = getContractForMonth(k)
       const contractStatus = contract?.status
-      const blockingStates = ['Pendiente de aceptación', 'Aceptado', 'Sugerido']
-      const isBlockingState = blockingStates.includes(contractStatus)
+      // Solo "Aceptado" es morado (Click Aceptado), el resto es naranja (Click Pendientes)
+      const isAccepted = contractStatus === 'Aceptado'
       
-      // Usar color morado si es bloqueante, naranja si no
-      const colorToUse = isBlockingState ? colorUsed : colorUsedOther
+      // Usar color morado si es "Aceptado", naranja si es "Pendiente de aceptación" o "Sugerido"
+      const colorToUse = isAccepted ? colorUsed : colorUsedOther
       disc.push({ seriesIndex: 0, dataPointIndex: idx, fillColor: colorToUse, strokeColor: colorToUse, size: 8 })
     }
   })
@@ -922,7 +1001,8 @@ async function onSubmitModal(payload) {
       // Limpiar selección
       selectedSet.clear()
       modalPoints.value = []
-      // Recargar la lista de contratos
+      // Refrescar dataset de uso del gráfico (y luego el listado si existe)
+      await loadMultiClickUsage()
       await loadMultiClickContracts()
     } else {
       console.error('❌ Error en respuesta:', res.data)
@@ -954,16 +1034,25 @@ async function onSubmitModal(payload) {
 async function loadMultiClickContracts() {
   multiclickError.value = ''
   multiclickRows.value = []
+  total.value = 0
   if (!customerNo.value) { multiclickError.value = 'Falta CustomerNo en sesión.'; return }
 
   multiclickLoading.value = true
   try {
+    const { contractNo, cups } = splitSearch()
+    const orderBy = toOrderByParam(sort.by, sort.dir)
+
     const { data } = await api.get('/v1/MultiClick/GetMultiClickEnergyContract', {
       params: {
         customerNo: customerNo.value,
+        contractNo: contractNo || undefined,
         marketerNo: config.MARKETER,
-        pageNumber: 1,
-        pageSize: 50
+        cups: cups || undefined,
+        status: status.value || undefined,
+        multiClickDocumentType: 'Propuesta',
+        orderBy,
+        pageNumber: page.value,
+        pageSize: pageSize.value
       }
     })
 
@@ -971,6 +1060,7 @@ async function loadMultiClickContracts() {
       : Array.isArray(data?.items) ? data.items
         : Array.isArray(data?.result) ? data.result
           : []
+    
     multiclickRows.value = items.map(x => ({
       contractNo: x.contractNo ?? x.ContractNo,
       customerNo: x.customerNo ?? x.CustomerNo,
@@ -994,12 +1084,66 @@ async function loadMultiClickContracts() {
       p6: Number(x.p6 ?? x.P6),
     }))
     
-    // Actualizar el gráfico para mostrar los puntos utilizados
-    rebuildChart()
+    // Actualizar total (usar data.total si está disponible, sino calcular)
+    total.value = data?.total ?? data?.totalCount ?? multiclickRows.value.length
   } catch (e) {
     multiclickError.value = e?.response?.data || e?.message || 'No se pudo cargar la lista.'
   } finally {
     multiclickLoading.value = false
+  }
+}
+
+async function loadMultiClickUsage() {
+  multiclickUsageError.value = ''
+  multiclickUsageRows.value = []
+  if (!customerNo.value) { multiclickUsageError.value = 'Falta CustomerNo en sesión.'; return }
+
+  multiclickUsageLoading.value = true
+  try {
+    // Reutilizamos el mismo endpoint de contratos MultiClick, pero aislado del listado.
+    const { data } = await api.get('/v1/MultiClick/GetMultiClickEnergyContract', {
+      params: {
+        customerNo: customerNo.value,
+        marketerNo: config.MARKETER,
+        pageNumber: 1,
+        pageSize: 200
+      }
+    })
+
+    const items = Array.isArray(data) ? data
+      : Array.isArray(data?.items) ? data.items
+        : Array.isArray(data?.result) ? data.result
+          : []
+
+    multiclickUsageRows.value = items.map(x => ({
+      contractNo: x.contractNo ?? x.ContractNo,
+      customerNo: x.customerNo ?? x.CustomerNo,
+      refApplicationOperNo: x.refApplicationOperNo ?? x.RefApplicationOperNo,
+      cups: x.cups ?? x.Cups,
+      multiClickDocumentType: x.multiClickDocumentType ?? x.MultiClickDocumentType,
+      multiClickDocumentNo: x.multiClickDocumentNo ?? x.MultiClickDocumentNo,
+      status: x.status ?? x.Status,
+      rateNo: x.rateNo ?? x.RateNo,
+      feeEnergy: Number(x.feeEnergy ?? x.FeeEnergy),
+      selectedPrice: Number(x.selectedPrice ?? x.SelectedPrice),
+      duration: x.duration ?? x.Duration,
+      startDate: x.startDate ?? x.StartDate,
+      endDate: x.endDate ?? x.EndDate,
+      dateTimeCreated: x.dateTimeCreated ?? x.DateTimeCreated,
+      p1: Number(x.p1 ?? x.P1),
+      p2: Number(x.p2 ?? x.P2),
+      p3: Number(x.p3 ?? x.P3),
+      p4: Number(x.p4 ?? x.P4),
+      p5: Number(x.p5 ?? x.P5),
+      p6: Number(x.p6 ?? x.P6),
+    }))
+
+    // Actualizar el gráfico para mostrar los puntos utilizados (sin depender del listado)
+    rebuildChart()
+  } catch (e) {
+    multiclickUsageError.value = e?.response?.data || e?.message || 'No se pudo cargar la info de uso.'
+  } finally {
+    multiclickUsageLoading.value = false
   }
 }
 
@@ -1017,6 +1161,23 @@ function fmtNum(n) {
 
 function isSugerido(s) { 
   return String(s || '').trim().toLowerCase() === 'sugerido' 
+}
+
+function isDocType(row, type) {
+  return String(row?.multiClickDocumentType || '').toLowerCase() === String(type || '').toLowerCase()
+}
+
+function rowClass(row) {
+  return {
+    'row-propuesta': isDocType(row, 'Propuesta'),
+    'row-contrato': isDocType(row, 'Contrato'),
+  }
+}
+
+function statusRowClass(row) {
+  return {
+    'row-status-sugerido': isSugerido(row.status),
+  }
 }
 
 /* ===================== PDF Modal ===================== */
@@ -1062,6 +1223,50 @@ async function fetchOperationPdfBase64ById(id) {
     try { base64 = JSON.parse(base64) } catch { }
   }
   return base64
+}
+
+async function fetchContractPdfBase64ById(contractNo) {
+  // Endpoint ContractCliente ContractPdf (igual que en Contracts.vue)
+  const url = `/v1/ContractCliente/ContractPdf/${encodeURIComponent(contractNo)}/false`
+  const { data } = await api.get(url, { responseType: 'text' })
+  let base64 = typeof data === 'string' ? data : (data && data.base64) || ''
+  if (!base64) throw new Error('PDF vacío')
+  if (base64.startsWith('"')) {
+    try { base64 = JSON.parse(base64) } catch { }
+  }
+  return base64
+}
+
+async function openContractPdfModal(contractNo) {
+  if (!contractNo) { 
+    showToast('No hay número de contrato.', 'error')
+    return 
+  }
+  
+  const key = `contract-${contractNo}`
+  if (pdfLoadingRows.has(key)) return
+
+  pdfLoadingRows.add(key)
+  pdfLoading.value = true
+  pdfError.value = ''
+  currentPdfId.value = contractNo
+  revokePdfUrl()
+
+  try {
+    const base64 = await fetchContractPdfBase64ById(contractNo)
+    pdfUrl.value = base64ToBlobUrl(base64)
+    showPdf.value = true
+    requestAnimationFrame(() => {
+      const el = document.querySelector('.pdf-modal')
+      if (el && typeof el.focus === 'function') el.focus()
+    })
+  } catch (e) {
+    pdfError.value = e?.response?.data?.message || e?.message || 'No se pudo cargar el PDF del contrato'
+    showPdf.value = true
+  } finally {
+    pdfLoading.value = false
+    pdfLoadingRows.delete(key)
+  }
 }
 
 async function openPdfModal(row) {
@@ -1153,6 +1358,7 @@ async function approve(row) {
       }
     })
     showToast('MultiClick aprobado correctamente.', 'success')
+    await loadMultiClickUsage()
     await loadMultiClickContracts()
   } catch (e) {
     showToast(e?.response?.data || e?.message || 'No se pudo aprobar el MultiClick', 'error')
@@ -1161,9 +1367,16 @@ async function approve(row) {
   }
 }
 
+/* Reactividad de filtros/orden/paginación */
+watch([search, status], () => { page.value = 1; loadMultiClickContracts() })
+watch(() => sort.by, () => { page.value = 1; loadMultiClickContracts() })
+watch(() => sort.dir, () => { page.value = 1; loadMultiClickContracts() })
+watch([page, pageSize], () => loadMultiClickContracts())
+
 onMounted(async () => {
   await loadLastContractIndex()
   await loadData()
+  await loadMultiClickUsage()
   await loadMultiClickContracts()
 })
 </script>
@@ -1229,39 +1442,83 @@ onMounted(async () => {
 
     <!-- MultiClick Contracts -->
     <section class="card mt-3">
-        <div class="card-head">
-          <h2 class="card-title">Listado de Multiclick</h2>
-        </div>
-        <div v-if="multiclickLoading" class="card-body center muted">Cargando…</div>
-        <div v-else-if="multiclickError" class="card-body text-danger">{{ multiclickError }}</div>
+      <div class="card-head">
+        <h2 class="card-title">Listado de Multiclick</h2>
+      </div>
 
-        <div v-else class="table-scroll">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Contrato</th>
-                <th>CUPS</th>
-                <th>Nº. Solicitud Operación</th>
-                <th>Tarifa</th>
-                <th class="text-center">Precio Referencia OMIP</th>
-                <!-- <th>Fee</th> -->
-                <th>Duración</th>
-                <th>Inicio</th>
-                <th>Fin</th>
-                <th>Estado</th>
-                <th class="text-end">Acción</th>
+      <!-- Controles estilo "Suggestions" -->
+      <div class="controls" style="padding: 0.75rem 1rem; border-bottom: 1px solid #eef2f7;">
+        <input v-model="search" type="search" class="input" placeholder="Buscar por Contrato o CUPS"
+          aria-label="Buscar" />
+
+        <select v-model="status" class="select" aria-label="Filtrar por estado">
+          <option value="">Todos los estados</option>
+          <option value="Sugerido">Sugerido</option>
+          <option value="Pending Acceptance">Pendiente de aceptación</option>
+          <option value="Aceptado">Aceptado</option>
+          <option value="Rechazado">Rechazado</option>
+        </select>
+
+        <button class="btn" @click="resetFilters">Limpiar</button>
+      </div>
+
+      <div v-if="multiclickLoading" class="card-body center muted">Cargando…</div>
+      <div v-else-if="multiclickError" class="card-body text-danger">{{ multiclickError }}</div>
+
+      <div v-else class="table-scroll">
+        <table class="table">
+          <thead>
+            <tr>
+              <th @click="toggleSort('ContractNo')" :class="thClass('ContractNo')">Contrato</th>
+              <th>CUPS</th>
+              <th>Nº. Solicitud Operación</th>
+              <th @click="toggleSort('Rate')" :class="thClass('Rate')">Tarifa</th>
+              <th class="text-center">Precio Referencia OMIP</th>
+              <!-- <th>Fee</th> -->
+              <th>Duración</th>
+              <th @click="toggleSort('StartDate')" :class="thClass('StartDate')">Inicio</th>
+              <th @click="toggleSort('EndDate')" :class="thClass('EndDate')">Fin</th>
+              <th @click="toggleSort('Status')" :class="thClass('Status')">Estado</th>
+              <th class="text-end">Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-for="group in groupedRows" :key="group.contractNo">
+              <!-- Fila de encabezado del grupo -->
+              <tr class="group-header">
+                <td colspan="10" class="group-header-cell">
+                  <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                      <strong>Contrato: {{ group.contractNo }}</strong>
+                      <span class="group-count">({{ group.rows.length }} {{ group.rows.length === 1 ? 'documento' : 'documentos' }})</span>
+                    </div>
+                    <button 
+                      class="icon-btn icon-btn-sm" 
+                      :class="{ 'loading': pdfLoadingRows.has(`contract-${group.contractNo}`) }"
+                      :disabled="pdfLoadingRows.has(`contract-${group.contractNo}`)"
+                      :title="pdfLoadingRows.has(`contract-${group.contractNo}`) ? 'Cargando PDF...' : 'Ver PDF del contrato'" 
+                      @click="openContractPdfModal(group.contractNo)">
+                      <svg v-if="!pdfLoadingRows.has(`contract-${group.contractNo}`)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" stroke="currentColor" stroke-width="2" />
+                        <path d="M14 2v6h6" stroke="currentColor" stroke-width="2" />
+                      </svg>
+                      <svg v-else class="spinner" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="31.416" stroke-dashoffset="31.416" fill="none" opacity="0.3"/>
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="31.416" stroke-dashoffset="23.562" fill="none"/>
+                      </svg>
+                    </button>
+                  </div>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              <tr v-for="r in multiclickRows" :key="r.contractNo + '|' + r.cups">
+              <!-- Filas del grupo -->
+              <tr v-for="r in group.rows" :key="r.contractNo + '|' + r.cups + '|' + r.multiClickDocumentNo" :class="rowClass(r)">
                 <td class="mono">
                   <small class="muted d-block">
-                    
                     <a 
                       href="#" 
-                      @click.prevent="router.push({ name: 'MultiClickDetails', query: { contractNo: r.contractNo, customerNo: r.customerNo } })"
+                      @click.prevent="router.push({ name: 'MultiClickDetails', query: { contractNo: r.contractNo, customerNo: r.customerNo, proposalNo: r.multiClickDocumentNo } })"
                       class="link-document"
-                      :title="`Ver detalles del contrato ${r.contractNo}`">
+                      :title="`Ver detalles del documento ${r.multiClickDocumentNo}`">
                       {{ r.multiClickDocumentNo }}
                     </a>
                   </small>
@@ -1309,26 +1566,47 @@ onMounted(async () => {
                       </svg>
                     </button>
 
-                    <button class="btn-ghost btn-ghost-custom" 
+                    <button class="btn-ghost btn-ghost-custom" :class="statusRowClass(r)"
                       :disabled="!isSugerido(r.status) || approving.has(`${r.customerNo}|${r.contractNo}|${r.cups}`)"
                       @click="approve(r)"
                       :title="isSugerido(r.status) ? 'Aprobar' : 'Solo disponible si el estado es Sugerido'">
                       {{ approving.has(`${r.customerNo}|${r.contractNo}|${r.cups}`) ? 'Enviando…' : 'Aprobar' }}
-                    </button> 
+                    </button>
                   </div>
                 </td>
               </tr>
+            </template>
 
-              <tr v-if="!multiclickLoading && multiclickRows.length === 0">
-                <td colspan="11" class="empty">No hay resultados.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+            <tr v-if="!multiclickLoading && multiclickRows.length === 0">
+              <td colspan="10" class="empty">No hay resultados.</td>
+            </tr>
+            <tr v-if="multiclickLoading">
+              <td colspan="10" class="empty">Cargando…</td>
+            </tr>
+            <tr v-if="multiclickError">
+              <td colspan="10" class="empty text-danger">{{ multiclickError }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Paginación -->
+      <div class="pagination">
+        <button class="btn" :disabled="page <= 1 || multiclickLoading" @click="page--">Anterior</button>
+        <span>Página {{ page }} / {{ totalPages }}</span>
+        <button class="btn" :disabled="page >= totalPages || multiclickLoading" @click="page++">Siguiente</button>
+
+        <select v-model.number="pageSize" class="select compact" :disabled="multiclickLoading"
+          aria-label="Elementos por página">
+          <option :value="10">10</option>
+          <option :value="20">20</option>
+          <option :value="50">50</option>
+        </select>
+      </div>
+    </section>
 
     <MultiClickModal :show="showModal" :points="modalPoints" :customer-no="customerNo" :prefilled-cups="prefilledCups"
-      :default-period-type="periodTarget" :omip-data="omipMap" :multiclick-contracts="multiclickRows" 
+      :default-period-type="periodTarget" :omip-data="omipMap" :multiclick-contracts="multiclickUsageRows" 
       :fee-energy="feeEnergy"
       @remove="onRemovePoint" @submit="onSubmitModal" @close="showModal = false" />
 
@@ -1634,6 +1912,20 @@ onMounted(async () => {
 .btn-ghost-custom:hover:not(:disabled) {
   background: #f8fafc;
 }
+
+/* Botón Aprobar activo cuando estado es Sugerido */
+.btn-ghost-custom.row-status-sugerido:not(:disabled) {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #3730a3;
+  font-weight: 600;
+}
+
+.btn-ghost-custom.row-status-sugerido:not(:disabled):hover {
+  background: #c7d2fe;
+  border-color: #a5b4fc;
+  color: #312e81;
+}
 .pill-sug {
   background: #eef2ff;
   border-color: #c7d2fe;
@@ -1756,6 +2048,131 @@ onMounted(async () => {
 .link-document:hover {
   color: #1d4ed8;
   text-decoration: underline;
+}
+
+/* Colores por tipo de documento */
+.table tbody tr.row-propuesta {
+  background: #f0f9ff;            /* azul muy suave */
+  border-left: 4px solid #38bdf8; /* cian */
+}
+.table tbody tr.row-propuesta td {
+  /* color ligeramente más oscuro para mejor contraste */
+  color: #1e3a8a;
+}
+
+.table tbody tr.row-contrato {
+  background: #f0fdf4;            /* verde muy suave */
+  border-left: 4px solid #34d399; /* verde */
+}
+.table tbody tr.row-contrato td {
+  /* color ligeramente más oscuro para mejor contraste */
+  color: #166534;
+}
+
+/* Si quieres que se note incluso al pasar el ratón */
+.table tbody tr.row-propuesta:hover {
+  background: #e0f2fe;
+}
+
+.table tbody tr.row-contrato:hover {
+  background: #dcfce7;
+}
+
+/* ===================== Estilos de controles y paginación (estilo Suggestions) ===================== */
+.controls {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.input,
+.select {
+  padding: .5rem .6rem;
+  border: 1px solid #d1d5db;
+  border-radius: .5rem;
+  min-width: 220px;
+}
+
+.select.compact {
+  min-width: 90px;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  justify-content: flex-end;
+  padding: .75rem;
+}
+
+.table thead th.sortable {
+  cursor: pointer;
+}
+
+.table thead th.sortable::after {
+  content: ' ⇅';
+  opacity: .35;
+}
+
+.table thead th.active.asc::after {
+  content: ' ↑';
+  opacity: .8;
+}
+
+.table thead th.active.desc::after {
+  content: ' ↓';
+  opacity: .8;
+}
+
+/* Estilos para agrupación visual por contractNo */
+.group-header {
+  background: #f8fafc;
+  border-top: 2px solid #3b82f6;
+  border-bottom: 2px solid #3b82f6;
+}
+
+.group-header-cell {
+  padding: 0.75rem 1rem !important;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  font-weight: 600;
+  color: #1e40af;
+  border-bottom: 2px solid #3b82f6;
+}
+
+.group-header-cell .d-flex {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.group-count {
+  margin-left: 0.5rem;
+  font-weight: 400;
+  color: #64748b;
+  font-size: 0.875rem;
+}
+
+.icon-btn-sm {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.row-status-sugerido {
+  border-left: 1px solid #e5e7eb;
+  color: #374151;
+}
+
+.row-status-sugerido:hover {
+  background: #fef3c7;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+}
+
+.font-size-small {
+  font-size: 0.70rem;
 }
 
 </style>
