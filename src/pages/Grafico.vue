@@ -275,7 +275,25 @@ async function loadData() {
   loading.value = true
   try {
     // 👇 API versionada
-    const { data } = await api.get('/v1/MultiClick')
+    // Este endpoint específico está causando ERR_TOO_MANY_REDIRECTS
+    // El problema está en el backend, pero intentamos manejarlo aquí
+    let data
+    try {
+      const response = await api.get('/v1/MultiClick', {
+        // Configuración específica para evitar redirecciones infinitas
+        maxRedirects: 0,
+        validateStatus: function (status) {
+          // Solo aceptar respuestas exitosas, rechazar redirecciones
+          return status >= 200 && status < 300
+        }
+      })
+      data = response.data
+    } catch (redirectError) {
+      // Si falla por redirecciones, el problema es del backend
+      console.error('❌ Error de redirección en /v1/MultiClick:', redirectError)
+      console.error('⚠️ Este es un problema del backend. Revisa BACKEND_FIX_PROMPT.md')
+      throw redirectError
+    }
 
     // tolera camelCase o PascalCase en el DTO
     const omipArr = data.omipMultiClicks ?? data.OmipMultiClicks ?? []
@@ -317,7 +335,12 @@ async function loadData() {
     initPeriods()
     rebuildChart()
   } catch (e) {
-    console.error('Error GET /api/v1/MultiClick', e)
+    console.error('❌ Error GET /api/v1/MultiClick:', e)
+    if (e?.code === 'ERR_TOO_MANY_REDIRECTS' || e?.message?.includes('TOO_MANY_REDIRECTS')) {
+      console.error('⚠️ El endpoint /v1/MultiClick está causando redirecciones infinitas.')
+      console.error('⚠️ Esto es un problema del backend. Revisa BACKEND_FIX_PROMPT.md para la solución.')
+    }
+    // No lanzar el error para que las otras llamadas puedan continuar
   } finally {
     loading.value = false
   }
@@ -451,7 +474,8 @@ const colorOmip = '#ff9f43'
 const colorSelected = '#dc3545'
 const colorLow = '#198754'
 const colorUsed = '#9333ea'  // Morado para puntos ya utilizados con estado "Aceptado"
-const colorUsedOther = '#ff6b35'  // Naranja para puntos con click vigente pero estado diferente de "Aceptado"
+const colorUsedOther = '#ff6b35'  // Naranja para puntos con click vigente pero estado "Pendiente de aceptación"
+const colorSuggested = '#3b82f6'  // Azul para puntos con estado "Sugerido"
 
 function computeLowFive(keys, g) {
   return new Set(
@@ -583,26 +607,55 @@ const chartOptions = ref({
         </div>`
       }
       
-      // Si hay contrato, agregar footer de advertencia
-      if (contract) {
+      // Si hay contrato, agregar footer de advertencia (solo si el estado es válido)
+      if (contract && isValidStatus(contract.status)) {
         const contractStatus = contract.status
-        // Solo "Aceptado" es morado (Click Aceptado), el resto es naranja (Click Pendientes)
         const isAccepted = contractStatus === 'Aceptado'
+        const isPending = contractStatus === 'Pendiente de aceptación'
+        const isSuggested = contractStatus === 'Sugerido'
         const isLowPrice = lowFiveSet.has(monthKey)
         
-        const message = '⚠️ Este punto ya tiene un click vigente'
+        // Mensaje diferente según el estado
+        let message = ''
+        if (isAccepted) {
+          message = '⚠️ Este punto ya tiene un click vigente'
+        } else if (isPending) {
+          message = '⚠️ Este punto ya tiene un click pendiente'
+        } else if (isSuggested) {
+          message = '⚠️ Este punto tiene una sugerencia pendiente'
+        }
+        
         const statusInfo = ` | Estado: ${contractStatus || 'N/A'}`
         
-        // Color del fondo según el estado (morado si "Aceptado", naranja si "Pendiente de aceptación" o "Sugerido")
-        const bgColor = isAccepted 
-          ? 'linear-gradient(135deg, #7c3aed, #9333ea)' 
-          : 'linear-gradient(135deg, #ff6b35, #ff8c42)'
-        const borderColor = isAccepted ? '#a855f7' : '#ff9f6b'
+        // Color del fondo según el estado
+        let bgColor = ''
+        let borderColor = ''
+        let borderColorName = ''
+        
+        if (isAccepted) {
+          bgColor = 'linear-gradient(135deg, #7c3aed, #9333ea)'
+          borderColor = '#a855f7'
+          borderColorName = 'morado'
+        } else if (isPending) {
+          bgColor = 'linear-gradient(135deg, #ff6b35, #ff8c42)'
+          borderColor = '#ff9f6b'
+          borderColorName = 'naranja'
+        } else if (isSuggested) {
+          bgColor = 'linear-gradient(135deg, #3b82f6, #60a5fa)'
+          borderColor = '#93c5fd'
+          borderColorName = 'azul'
+        }
         
         // Si también es uno de los 5 precios más bajos, agregar nota sobre el borde
-        const borderNote = isLowPrice 
-          ? `<br/><small>🟢 5 precios más bajos | Borde ${isAccepted ? 'morado' : 'naranja'} = Click vigente</small>`
-          : ''
+        let borderNote = ''
+        if (isLowPrice) {
+          let statusText = ''
+          if (isAccepted) statusText = 'Click vigente'
+          else if (isPending) statusText = 'Click pendiente'
+          else if (isSuggested) statusText = 'Sugerencia pendiente'
+          
+          borderNote = `<br/><small>🟢 5 precios más bajos | Borde ${borderColorName} = ${statusText}</small>`
+        }
         
         html += `<div class="tooltip-footer" style="background: ${bgColor}; border-top: 2px solid ${borderColor};">
           <strong>${message}</strong><br/>
@@ -675,6 +728,12 @@ function expandPeriodToMonths(periodKey) {
   return []
 }
 
+// Función auxiliar para verificar si un estado es válido para mostrar en el gráfico
+function isValidStatus(status) {
+  const statusStr = String(status || '').trim()
+  return statusStr === 'Aceptado' || statusStr === 'Pendiente de aceptación' || statusStr === 'Sugerido'
+}
+
 // Función para verificar si un periodo está ocupado por algún contrato
 function isMonthUsed(periodKey) {
   // Expandir el periodo a todos sus meses
@@ -700,6 +759,9 @@ function isMonthUsed(periodKey) {
     for (const contract of multiclickUsageRows.value) {
       if (!contract.startDate || !contract.endDate) continue
       
+      // Solo considerar contratos con estado válido (Aceptado o Pendiente de aceptación)
+      if (!isValidStatus(contract.status)) continue
+      
       // Parsear fechas del contrato y normalizar a inicio de mes
       const startDate = new Date(contract.startDate)
       startDate.setHours(0, 0, 0, 0)
@@ -710,12 +772,13 @@ function isMonthUsed(periodKey) {
         check: checkDate.toISOString().split('T')[0],
         start: startDate.toISOString().split('T')[0],
         end: endDate.toISOString().split('T')[0],
+        status: contract.status,
         overlaps: checkDate >= startDate && checkDate <= endDate
       })
       
       // Verificar si checkDate está dentro del rango del contrato
       if (checkDate >= startDate && checkDate <= endDate) {
-        console.log(`  ✅ OCUPADO por contrato: ${contract.contractNo}`)
+        console.log(`  ✅ OCUPADO por contrato: ${contract.contractNo} (${contract.status})`)
         return true
       }
     }
@@ -746,6 +809,9 @@ function getContractForMonth(periodKey) {
     for (const contract of multiclickUsageRows.value) {
       if (!contract.startDate || !contract.endDate) continue
       
+      // Solo considerar contratos con estado válido (Aceptado o Pendiente de aceptación)
+      if (!isValidStatus(contract.status)) continue
+      
       // Parsear fechas del contrato y normalizar
       const startDate = new Date(contract.startDate)
       startDate.setHours(0, 0, 0, 0)
@@ -774,11 +840,28 @@ function buildDiscreteMarkers(keys) {
         // Hay punto verde Y contrato: punto más pequeño con borde más grueso
         const contract = getContractForMonth(k)
         const contractStatus = contract?.status
-        // Solo "Aceptado" es morado (Click Aceptado), el resto es naranja (Click Pendientes)
-        const isAccepted = contractStatus === 'Aceptado'
         
-        // Usar color morado si es "Aceptado", naranja si es "Pendiente de aceptación" o "Sugerido"
-        const borderColor = isAccepted ? colorUsed : colorUsedOther
+        // Solo mostrar si el estado es válido (Aceptado, Pendiente de aceptación o Sugerido)
+        if (!isValidStatus(contractStatus)) {
+          // Si el estado no es válido, mostrar solo el punto verde sin borde de contrato
+          disc.push({ 
+            seriesIndex: 0, 
+            dataPointIndex: idx, 
+            fillColor: colorLow, 
+            strokeColor: '#ffffff', 
+            strokeWidth: 3,
+            size: 10 
+          })
+          return
+        }
+        
+        // Determinar el color según el estado
+        const isAccepted = contractStatus === 'Aceptado'
+        const isPending = contractStatus === 'Pendiente de aceptación'
+        const isSuggested = contractStatus === 'Sugerido'
+        
+        // Usar color según el estado: morado para "Aceptado", naranja para "Pendiente de aceptación", azul para "Sugerido"
+        const borderColor = isAccepted ? colorUsed : (isPending ? colorUsedOther : colorSuggested)
         disc.push({ 
           seriesIndex: 0, 
           dataPointIndex: idx, 
@@ -802,11 +885,20 @@ function buildDiscreteMarkers(keys) {
       // Solo punto usado (sin verde)
       const contract = getContractForMonth(k)
       const contractStatus = contract?.status
-      // Solo "Aceptado" es morado (Click Aceptado), el resto es naranja (Click Pendientes)
-      const isAccepted = contractStatus === 'Aceptado'
       
-      // Usar color morado si es "Aceptado", naranja si es "Pendiente de aceptación" o "Sugerido"
-      const colorToUse = isAccepted ? colorUsed : colorUsedOther
+      // Solo mostrar si el estado es válido (Aceptado, Pendiente de aceptación o Sugerido)
+      if (!isValidStatus(contractStatus)) {
+        // Si el estado no es válido, no mostrar marcador
+        return
+      }
+      
+      // Determinar el color según el estado
+      const isAccepted = contractStatus === 'Aceptado'
+      const isPending = contractStatus === 'Pendiente de aceptación'
+      const isSuggested = contractStatus === 'Sugerido'
+      
+      // Usar color según el estado: morado para "Aceptado", naranja para "Pendiente de aceptación", azul para "Sugerido"
+      const colorToUse = isAccepted ? colorUsed : (isPending ? colorUsedOther : colorSuggested)
       disc.push({ seriesIndex: 0, dataPointIndex: idx, fillColor: colorToUse, strokeColor: colorToUse, size: 8 })
     }
   })
@@ -1374,10 +1466,34 @@ watch(() => sort.dir, () => { page.value = 1; loadMultiClickContracts() })
 watch([page, pageSize], () => loadMultiClickContracts())
 
 onMounted(async () => {
-  await loadLastContractIndex()
-  await loadData()
-  await loadMultiClickUsage()
-  await loadMultiClickContracts()
+  // Cargar secuencialmente para evitar posibles problemas de concurrencia en el backend
+  // Aunque el problema real es del backend, hacer las llamadas secuencialmente puede ayudar
+  try {
+    await loadLastContractIndex()
+  } catch (e) {
+    console.error('Error en loadLastContractIndex:', e)
+  }
+  
+  // loadData puede fallar, pero no debe bloquear las otras llamadas
+  try {
+    await loadData()
+  } catch (e) {
+    console.error('Error en loadData (continuando con otras llamadas):', e)
+  }
+  
+  // Hacer estas llamadas secuencialmente en lugar de en paralelo
+  // para evitar posibles problemas de concurrencia en el backend
+  try {
+    await loadMultiClickUsage()
+  } catch (e) {
+    console.error('Error en loadMultiClickUsage:', e)
+  }
+  
+  try {
+    await loadMultiClickContracts()
+  } catch (e) {
+    console.error('Error en loadMultiClickContracts:', e)
+  }
 })
 </script>
 
@@ -1425,6 +1541,10 @@ onMounted(async () => {
           <div class="legend-item">
             <span class="legend-dot" style="background-color: #ff6b35;"></span>
             <span class="legend-text">Click Pendientes</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot" style="background-color: #3b82f6;"></span>
+            <span class="legend-text">Click Sugerido</span>
           </div>
             <div class="legend-item">
               <span class="legend-dot" style="background-color: #198754;"></span>
