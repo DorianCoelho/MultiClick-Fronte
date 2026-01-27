@@ -884,7 +884,7 @@ function onRemove(key) { emit('remove', key) }
                       <th>Mes / Año</th>
                       <th>Mes Inicio</th>
                       <th>Mes Final</th>
-                      <th>Valor (€/MWh)</th>
+                      <th>Valor (€/kWh)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -902,7 +902,7 @@ function onRemove(key) { emit('remove', key) }
                       <td>
                         <input type="text" class="form-control form-control-sm" :value="endMonth" readonly style="min-width: 100px;" />
                       </td>
-                      <td>{{ fixedPrice ? `${fixedPrice} € / MWh` : '-' }}</td>
+                      <td>{{ fixedPrice ? `${fixedPrice} € / kWh` : '-' }}</td>
                     </tr>
                     <tr v-if="!points.length">
                       <td colspan="5" class="text-center text-muted">Sin punto seleccionado</td>
@@ -978,7 +978,7 @@ function onRemove(key) { emit('remove', key) }
                 <div class="input-group">
                   <input class="form-control" type="number" inputmode="decimal" step="0.01" min="0" v-model="fixedPrice"
                     placeholder="Ej. 85.50" readonly />
-                  <span class="input-group-text">€/MWh</span>
+                  <span class="input-group-text">€/kWh</span>
                 </div>
                 <small class="text-muted">Sugerido: media de los puntos seleccionados.</small>
               </div>
@@ -1025,8 +1025,8 @@ function onRemove(key) { emit('remove', key) }
                     <thead>
                       <tr>
                         <th>Periodos de duración de Click</th>
-                        <th>Consumo media mensual (CMM) en MWh</th>
-                        <th>CMM × Cobertura (MWh)</th>
+                        <th>Consumo media mensual (CMM) en kWh</th>
+                        <th>CMM × Cobertura (kWh)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1067,10 +1067,10 @@ function onRemove(key) { emit('remove', key) }
                       <tr v-if="clickPeriods.length > 0" class="table-active fw-bold">
                         <td>TOTAL</td>
                         <td>
-                          {{ totalVolumeWithoutCoverage.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} MWh
+                          {{ totalVolumeWithoutCoverage.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} kWh
                         </td>
                         <td>
-                          {{ totalVolume.toLocaleString('es-ES') }} MWh
+                          {{ totalVolume.toLocaleString('es-ES') }} kWh
                         </td>
                       </tr>
                     </tbody>
