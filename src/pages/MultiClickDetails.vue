@@ -468,7 +468,7 @@ onMounted(() => window.addEventListener('keydown', onKey))
                   <thead>
                     <tr>
                       <th>Período</th>
-                      <th class="text-end">Valor (€/MWh)</th>
+                      <th class="text-end">Valor (€/KWh)</th>
                     </tr>
                   </thead>
                   <tbody>
