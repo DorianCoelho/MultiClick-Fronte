@@ -380,7 +380,7 @@ onMounted(() => window.addEventListener('keydown', onKey))
                     <span class="price-label-inline">Precio Ref. OMIP</span>
                     <div class="price-value-inline">
                       <strong>{{ fmtNum(contractData.selectedPrice) }}</strong>
-                      <span class="price-unit-inline">€/MWh</span>
+                      <span class="price-unit-inline">€/kWh</span>
                     </div>
                   </div>
                 </div>
