@@ -1025,7 +1025,7 @@ function onRemove(key) { emit('remove', key) }
                     <thead>
                       <tr>
                         <th>Periodos de duración de Click</th>
-                        <th>Consumo media mensual (CMM) en kWh</th>
+                        <th>Consumo medio mensual (CMM) en kWh</th>
                         <th>CMM × Cobertura (kWh)</th>
                       </tr>
                     </thead>
@@ -1045,6 +1045,7 @@ function onRemove(key) { emit('remove', key) }
                               placeholder="0.00" 
                               style="min-width: 150px;"
                               :disabled="loadingCmm"
+                              readonly
                             />
                             <span v-if="loadingCmm" class="input-group-text">
                               <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
