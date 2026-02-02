@@ -468,7 +468,7 @@ onMounted(() => window.addEventListener('keydown', onKey))
                   <thead>
                     <tr>
                       <th>Período</th>
-                      <th class="text-end">Valor (€/KWh)</th>
+                      <th class="text-end no-uppercase">Valor (€/kWh)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1046,6 +1046,11 @@ onMounted(() => window.addEventListener('keydown', onKey))
   text-transform: uppercase;
   letter-spacing: 0.05em;
   border-bottom: 2px solid #e5e7eb;
+}
+
+.table-modern th.no-uppercase {
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .table-modern td {
