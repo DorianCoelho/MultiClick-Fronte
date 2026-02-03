@@ -603,7 +603,7 @@ const chartOptions = ref({
             <span class="tooltip-dot" style="background-color: ${colorDot};"></span>
             ${w.globals.seriesNames[i]}:
           </span>
-          <span class="tooltip-value">${value != null ? value.toFixed(2) + ' €/kWh' : '-'}</span>
+          <span class="tooltip-value">${value != null ? value.toFixed(2) + ' €/MWh' : '-'}</span>
         </div>`
       }
       
@@ -670,7 +670,7 @@ const chartOptions = ref({
   grid: { borderColor: '#e0e0e0' },
   xaxis: { categories: [] },
   yaxis: {
-    title: { text: 'Precio (€/kWh)' },
+    title: { text: 'Precio (€/MWh)' },
     labels: {
       formatter: (val) => (val == null ? '' : Number(val).toFixed(2)) // ← 2 decimales en el eje
     }
