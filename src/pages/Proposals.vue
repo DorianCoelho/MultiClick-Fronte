@@ -326,7 +326,7 @@ async function openPdfModal(row) {
     revokePdfUrl() // limpia si había uno anterior
 
     try {
-        const url = `/v1/ProposalCliente/ProposalPdf/${encodeURIComponent(id)}/false`
+        const url = `/v1/ProposalCliente/ProposalPdf/${encodeURIComponent(id)}/1`
         // Pedimos como texto para evitar problemas con JSON
         const { data } = await api.get(url, { responseType: 'text' })
 
