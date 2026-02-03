@@ -884,7 +884,7 @@ function onRemove(key) { emit('remove', key) }
                       <th>Mes / Año</th>
                       <th>Mes Inicio</th>
                       <th>Mes Final</th>
-                      <th>Valor (€/kWh)</th>
+                      <th>Valor (€/MWh)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -902,7 +902,7 @@ function onRemove(key) { emit('remove', key) }
                       <td>
                         <input type="text" class="form-control form-control-sm" :value="endMonth" readonly style="min-width: 100px;" />
                       </td>
-                      <td>{{ fixedPrice ? `${fixedPrice} € / kWh` : '-' }}</td>
+                      <td>{{ fixedPrice ? `${fixedPrice} € / MWh` : '-' }}</td>
                     </tr>
                     <tr v-if="!points.length">
                       <td colspan="5" class="text-center text-muted">Sin punto seleccionado</td>
@@ -978,7 +978,7 @@ function onRemove(key) { emit('remove', key) }
                 <div class="input-group">
                   <input class="form-control" type="number" inputmode="decimal" step="0.01" min="0" v-model="fixedPrice"
                     placeholder="Ej. 85.50" readonly />
-                  <span class="input-group-text">€/kWh</span>
+                  <span class="input-group-text">€/MWh</span>
                 </div>
                 <small class="text-muted">Sugerido: media de los puntos seleccionados.</small>
               </div>

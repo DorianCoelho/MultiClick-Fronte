@@ -389,7 +389,7 @@ function base64ToBlobUrl(base64, mime = 'application/pdf') {
 }
 
 async function fetchPdfBase64ById(id) {
-  const url = `/v1/ProposalCliente/ProposalPdf/${encodeURIComponent(id)}/false`
+  const url = `/v1/ProposalCliente/ProposalPdf/${encodeURIComponent(id)}/1`
   const { data } = await api.get(url, { responseType: 'text' })
   let base64 = typeof data === 'string' ? data : (data && data.base64) || ''
   if (!base64) throw new Error('PDF vacío')
