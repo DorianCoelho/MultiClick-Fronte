@@ -1068,7 +1068,8 @@ function onRemove(key) { emit('remove', key) }
                       <tr v-if="clickPeriods.length > 0" class="table-active fw-bold">
                         <td>TOTAL</td>
                         <td>
-                          {{ totalVolumeWithoutCoverage.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} kWh
+                          <!-- {{ totalVolumeWithoutCoverage.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} kWh -->
+                          {{ totalVolumeWithoutCoverage.toLocaleString('es-ES') }} kWh
                         </td>
                         <td>
                           {{ totalVolume.toLocaleString('es-ES') }} kWh
