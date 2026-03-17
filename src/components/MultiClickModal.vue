@@ -1025,7 +1025,7 @@ function onRemove(key) { emit('remove', key) }
                     <thead>
                       <tr>
                         <th>Periodos de duración de Click</th>
-                        <th>Consumo medio mensual (CMM) en kWh</th>
+                        <th>Consumo medio mensual (CMM) declarado en kWh</th>
                         <th>CMM × Cobertura (kWh)</th>
                       </tr>
                     </thead>

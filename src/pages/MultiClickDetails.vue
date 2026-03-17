@@ -327,9 +327,9 @@ onMounted(() => window.addEventListener('keydown', onKey))
           </div>
         </div>
         <div class="head-actions">
-          <button 
+          <button
             v-if="contractData?.multiclickDocumentNo"
-            class="btn btn-pdf" 
+            class="btn btn-pdf"
             @click="openPdfModal"
             :disabled="pdfLoading">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -337,6 +337,18 @@ onMounted(() => window.addEventListener('keydown', onKey))
               <path d="M14 2v6h6"/>
             </svg>
             {{ pdfLoading ? 'Cargando...' : 'Ver PDF' }}
+          </button>
+          <button
+            v-if="contractData?.refApplicationOperNo"
+            class="btn btn-pdf btn-pdf-operation"
+            @click="openOperationPdfModal"
+            :disabled="pdfLoading"
+            title="Ver PDF de la operación">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+              <path d="M14 2v6h6"/>
+            </svg>
+            {{ pdfLoading ? 'Cargando...' : 'Ver PDF operación' }}
           </button>
           <button class="btn btn-back" @click="router.back()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -420,9 +432,9 @@ onMounted(() => window.addEventListener('keydown', onKey))
                 </div>
                 <div class="info-item">
                   <span class="info-label">Ref. Operación</span>
-                  <a 
-                    v-if="contractData.refApplicationOperNo && contractData.multiclickDocumentNo"
-                    href="#" 
+                  <a
+                    v-if="contractData.refApplicationOperNo"
+                    href="#"
                     @click.prevent="openOperationPdfModal"
                     class="info-value mono link-document"
                     :title="`Ver PDF de operación ${contractData.refApplicationOperNo}`">
