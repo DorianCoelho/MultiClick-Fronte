@@ -221,7 +221,7 @@ async function fetchPdfBase64ById(id) {
 }
 
 async function fetchOperationPdfBase64ById(id) {
-  // Endpoint MultiClick GetOperationPdf
+  // Endpoint MultiClick GetOperationPdf (igual que en MultiClickContracts.vue)
   const url = `/v1/MultiClick/GetOperationPdf/${encodeURIComponent(id)}`
   const { data } = await api.get(url, { responseType: 'text' })
   let base64 = typeof data === 'string' ? data : (data && data.base64) || ''
