@@ -33,7 +33,7 @@ function resetFilters() {
 }
 
 /* Ordenación por cabecera */
-const sort = reactive({ by: 'ContractNo', dir: 'desc' }) // campo del enum + sentido
+const sort = reactive({ by: 'RefApplicationOperNo', dir: 'desc' }) // Por defecto: Nº solicitud operación descendente
 function toggleSort(colKey) {
   if (sort.by === colKey) sort.dir = (sort.dir === 'asc' ? 'desc' : 'asc')
   else { sort.by = colKey; sort.dir = 'asc' }
@@ -55,7 +55,10 @@ function toOrderByParam(by, dir) {
     case 'StartDate': return desc ? 'StartDateDesc' : 'StartDate'
     case 'EndDate': return desc ? 'EndDateDesc' : 'EndDate'
     case 'Rate': return desc ? 'RateDesc' : 'Rate'
-    default: return desc ? 'ContractNoDesc' : 'ContractNo'
+    case 'DocumentType': return desc ? 'DocumentTypeDesc' : 'DocumentType'
+    case 'RefApplicationOperNo': return desc ? 'RefApplicationOperNoDesc' : 'RefApplicationOperNo'
+    case 'DateTimeCreated': return desc ? 'DateTimeCreatedDesc' : 'DateTimeCreated'
+    default: return desc ? 'RefApplicationOperNoDesc' : 'RefApplicationOperNo'
   }
 }
 
@@ -145,18 +148,19 @@ async function load() {
         status: status.value || undefined,    // 👈 igual aquí
         orderBy,
         pageNumber: page.value,
-        multiClickDocumentType: 'Propuesta',
+        // 👇 NO filtrar por tipo de documento - traer tanto Propuestas como Contratos
+        // multiClickDocumentType: 'Propuesta',  // ← COMENTADO para traer ambos tipos
         pageSize: pageSize.value
       }
     })
 
-    // resto igual…
+    // La respuesta puede venir como array directo o dentro de un objeto
     const items = Array.isArray(data) ? data
       : Array.isArray(data?.items) ? data.items
         : Array.isArray(data?.result) ? data.result
           : []
     
-    // 👇 MAPEAR TODOS LOS ITEMS
+    // 👇 MAPEAR TODOS LOS ITEMS (Propuestas y Contratos)
     const allItems = items.map(x => ({
       contractNo: x.contractNo ?? x.ContractNo,
       customerNo: x.customerNo ?? x.CustomerNo,
@@ -181,17 +185,59 @@ async function load() {
       p6: Number(x.p6 ?? x.P6),
     }))
     
-    // 👇 FILTRAR SOLO PROPUESTAS
-    const propuestasOnly = allItems.filter(item => 
-      String(item.multiClickDocumentType || '').toLowerCase() === 'propuesta'
-    )
+    // 👇 MOSTRAR TODOS LOS ITEMS (Propuestas y Contratos)
+    let finalItems = allItems
     
-    rows.value = propuestasOnly
+    // Ordenación en el frontend si es necesario (para campos que el backend no soporta o para ordenación secundaria)
+    if (sort.by === 'DocumentType') {
+      // Ordenación por tipo de documento
+      finalItems = [...allItems].sort((a, b) => {
+        const typeA = String(a.multiClickDocumentType || '').toLowerCase()
+        const typeB = String(b.multiClickDocumentType || '').toLowerCase()
+        const comparison = typeA.localeCompare(typeB)
+        return sort.dir === 'asc' ? comparison : -comparison
+      })
+    } else if (sort.by === 'RefApplicationOperNo') {
+      // Ordenación por Nº solicitud operación con ordenación secundaria por fecha de creación
+      finalItems = [...allItems].sort((a, b) => {
+        const refA = String(a.refApplicationOperNo || '').toLowerCase()
+        const refB = String(b.refApplicationOperNo || '').toLowerCase()
+        
+        // Primero ordenar por refApplicationOperNo
+        let comparison = refA.localeCompare(refB)
+        
+        // Si son iguales, ordenar por fecha de creación (más reciente primero)
+        if (comparison === 0) {
+          const dateA = a.dateTimeCreated ? new Date(a.dateTimeCreated).getTime() : 0
+          const dateB = b.dateTimeCreated ? new Date(b.dateTimeCreated).getTime() : 0
+          // Ordenación secundaria: más reciente primero (descendente)
+          comparison = dateB - dateA
+        }
+        
+        // Aplicar la dirección del sort principal
+        return sort.dir === 'asc' ? comparison : -comparison
+      })
+    } else if (sort.by === 'DateTimeCreated') {
+      // Ordenación por fecha de creación
+      finalItems = [...allItems].sort((a, b) => {
+        const dateA = a.dateTimeCreated ? new Date(a.dateTimeCreated).getTime() : 0
+        const dateB = b.dateTimeCreated ? new Date(b.dateTimeCreated).getTime() : 0
+        const comparison = dateB - dateA // Descendente por defecto (más reciente primero)
+        return sort.dir === 'asc' ? -comparison : comparison
+      })
+    }
+    
+    rows.value = finalItems
 
-    // Ajustar total basado en las propuestas filtradas
-    total.value = propuestasOnly.length
-    if (!total.value && propuestasOnly.length > 0) {
-      total.value = (page.value - 1) * pageSize.value + propuestasOnly.length + (propuestasOnly.length === pageSize.value ? pageSize.value : 0)
+    // Ajustar total basado en todos los items
+    total.value = finalItems.length
+    // Si hay paginación en el backend, usar el total del backend si está disponible
+    if (data?.total != null) {
+      total.value = data.total
+    } else if (data?.totalCount != null) {
+      total.value = data.totalCount
+    } else if (!total.value && allItems.length > 0) {
+      total.value = (page.value - 1) * pageSize.value + allItems.length + (allItems.length === pageSize.value ? pageSize.value : 0)
     }
   } catch (e) {
     error.value = e?.response?.data || e?.message || 'No se pudo cargar la lista.'
@@ -432,8 +478,8 @@ onMounted(() => window.addEventListener('keydown', onKey))
   <DashboardLayout>
     <div class="page">
       <header class="header">
-        <h1>Propuestas MultiClick</h1>
-        <p class="muted">Listado de Propuestas de Multiclick</p>
+        <h1>Propuestas y Contratos MultiClick</h1>
+        <p class="muted">Listado de Propuestas y Contratos de Multiclick</p>
       </header>
 
       <!-- Controles estilo “Propuestas” -->
@@ -459,8 +505,9 @@ onMounted(() => window.addEventListener('keydown', onKey))
             <thead>
               <tr>
                 <th @click="toggleSort('ContractNo')" :class="thClass('ContractNo')">Contrato</th>
+                <th @click="toggleSort('DocumentType')" :class="thClass('DocumentType')">Tipo</th>
                 <th>CUPS</th>
-                <th>Nº. Solicitud Operación</th>
+                <th @click="toggleSort('RefApplicationOperNo')" :class="thClass('RefApplicationOperNo')">Nº. Solicitud Operación</th>
                 <th @click="toggleSort('Rate')" :class="thClass('Rate')">Tarifa</th>
                 <th class="text-center">Precio Referencia OMIP</th>
                 <!-- <th>Fee</th> -->
@@ -475,11 +522,11 @@ onMounted(() => window.addEventListener('keydown', onKey))
               <template v-for="group in groupedRows" :key="group.contractNo">
                 <!-- Fila de encabezado del grupo -->
                 <tr class="group-header">
-                  <td colspan="10" class="group-header-cell">
+                  <td colspan="11" class="group-header-cell">
                     <div class="d-flex align-items-center justify-content-between">
                       <div>
                         <strong>Contrato: {{ group.contractNo }}</strong>
-                        <span class="group-count">({{ group.rows.length }} {{ group.rows.length === 1 ? 'propuesta' : 'propuestas' }})</span>
+                        <span class="group-count">({{ group.rows.length }} {{ group.rows.length === 1 ? 'documento' : 'documentos' }})</span>
                       </div>
                       <button 
                         class="icon-btn icon-btn-sm" 
@@ -516,6 +563,14 @@ onMounted(() => window.addEventListener('keydown', onKey))
                     <small class="muted d-block font-size-small">
                       {{ r.contractNo }}
                     </small>
+                  </td>
+                  <td>
+                    <span class="pill" :class="{ 
+                      'pill-propuesta': isDocType(r, 'Propuesta'),
+                      'pill-contrato': isDocType(r, 'Contrato')
+                    }">
+                      {{ r.multiClickDocumentType === 'Propuesta' ? 'Propuesta' : r.multiClickDocumentType === 'Contrato' ? 'Contrato' : r.multiClickDocumentType || '—' }}
+                    </span>
                   </td>
                   <td class="mono">{{ r.cups }}</td>
                   <td class="mono">
@@ -568,13 +623,13 @@ onMounted(() => window.addEventListener('keydown', onKey))
               </template>
 
               <tr v-if="!loading && rows.length === 0">
-                <td colspan="10" class="empty">No hay resultados.</td>
+                <td colspan="11" class="empty">No hay resultados.</td>
               </tr>
               <tr v-if="loading">
-                <td colspan="10" class="empty">Cargando…</td>
+                <td colspan="11" class="empty">Cargando…</td>
               </tr>
               <tr v-if="error">
-                <td colspan="10" class="empty text-danger">{{ error }}</td>
+                <td colspan="11" class="empty text-danger">{{ error }}</td>
               </tr>
             </tbody>
             <div v-if="showPdf" class="pdf-modal" @keydown.esc="closePdf" tabindex="0">
@@ -772,6 +827,20 @@ onMounted(() => window.addEventListener('keydown', onKey))
   background: #eef2ff;
   border-color: #c7d2fe;
   color: #3730a3
+}
+
+.pill-propuesta {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
+  font-weight: 600;
+}
+
+.pill-contrato {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+  color: #065f46;
+  font-weight: 600;
 }
 
 .pagination {

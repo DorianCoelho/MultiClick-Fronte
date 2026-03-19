@@ -1012,6 +1012,7 @@ function onRemove(key) { emit('remove', key) }
                         max="100"
                         v-model.number="coverage"
                         placeholder="Ej. 50"
+                        readonly
                         @input="coverage = Math.round($event.target.value) || ''"
                       />
                       <span class="input-group-text">%</span>
@@ -1025,7 +1026,7 @@ function onRemove(key) { emit('remove', key) }
                     <thead>
                       <tr>
                         <th>Periodos de duración de Click</th>
-                        <th>Consumo medio mensual (CMM) declarado en kWh</th>
+                        <th>Consumo medio mensual (CMM) declarado en kWh</th>                      
                         <th>CMM × Cobertura (kWh)</th>
                       </tr>
                     </thead>
@@ -1059,6 +1060,7 @@ function onRemove(key) { emit('remove', key) }
                             :value="getCmmWithCoverage(period.key).toLocaleString('es-ES')"
                             readonly
                             style="min-width: 150px; background-color: #f8f9fa;"
+                            
                           />
                         </td>
                       </tr>
@@ -1068,7 +1070,8 @@ function onRemove(key) { emit('remove', key) }
                       <tr v-if="clickPeriods.length > 0" class="table-active fw-bold">
                         <td>TOTAL</td>
                         <td>
-                          {{ totalVolumeWithoutCoverage.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} kWh
+                          <!-- {{ totalVolumeWithoutCoverage.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} kWh -->
+                          {{ totalVolumeWithoutCoverage.toLocaleString('es-ES') }} kWh
                         </td>
                         <td>
                           {{ totalVolume.toLocaleString('es-ES') }} kWh

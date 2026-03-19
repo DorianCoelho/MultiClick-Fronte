@@ -43,7 +43,7 @@ function resetFilters() {
 }
 
 /* Ordenación por cabecera */
-const sort = reactive({ by: 'ContractNo', dir: 'desc' })
+const sort = reactive({ by: 'RefApplicationOperNo', dir: 'desc' }) // Por defecto: Nº solicitud operación descendente
 function toggleSort(colKey) {
   if (sort.by === colKey) sort.dir = (sort.dir === 'asc' ? 'desc' : 'asc')
   else { sort.by = colKey; sort.dir = 'asc' }
@@ -65,7 +65,10 @@ function toOrderByParam(by, dir) {
     case 'StartDate': return desc ? 'StartDateDesc' : 'StartDate'
     case 'EndDate': return desc ? 'EndDateDesc' : 'EndDate'
     case 'Rate': return desc ? 'RateDesc' : 'Rate'
-    default: return desc ? 'ContractNoDesc' : 'ContractNo'
+    case 'DocumentType': return desc ? 'DocumentTypeDesc' : 'DocumentType'
+    case 'RefApplicationOperNo': return desc ? 'RefApplicationOperNoDesc' : 'RefApplicationOperNo'
+    case 'DateTimeCreated': return desc ? 'DateTimeCreatedDesc' : 'DateTimeCreated'
+    default: return desc ? 'RefApplicationOperNoDesc' : 'RefApplicationOperNo'
   }
 }
 
@@ -1141,7 +1144,8 @@ async function loadMultiClickContracts() {
         marketerNo: config.MARKETER,
         cups: cups || undefined,
         status: status.value || undefined,
-        multiClickDocumentType: 'Propuesta',
+        // 👇 NO filtrar por tipo de documento - traer tanto Propuestas como Contratos
+        // multiClickDocumentType: 'Propuesta',  // ← COMENTADO para traer ambos tipos
         orderBy,
         pageNumber: page.value,
         pageSize: pageSize.value
@@ -1153,7 +1157,7 @@ async function loadMultiClickContracts() {
         : Array.isArray(data?.result) ? data.result
           : []
     
-    multiclickRows.value = items.map(x => ({
+    let mappedItems = items.map(x => ({
       contractNo: x.contractNo ?? x.ContractNo,
       customerNo: x.customerNo ?? x.CustomerNo,
       refApplicationOperNo: x.refApplicationOperNo ?? x.RefApplicationOperNo,
@@ -1175,6 +1179,47 @@ async function loadMultiClickContracts() {
       p5: Number(x.p5 ?? x.P5),
       p6: Number(x.p6 ?? x.P6),
     }))
+    
+    // Ordenación en el frontend si es necesario (para campos que el backend no soporta o para ordenación secundaria)
+    if (sort.by === 'DocumentType') {
+      // Ordenación por tipo de documento
+      mappedItems = [...mappedItems].sort((a, b) => {
+        const typeA = String(a.multiClickDocumentType || '').toLowerCase()
+        const typeB = String(b.multiClickDocumentType || '').toLowerCase()
+        const comparison = typeA.localeCompare(typeB)
+        return sort.dir === 'asc' ? comparison : -comparison
+      })
+    } else if (sort.by === 'RefApplicationOperNo') {
+      // Ordenación por Nº solicitud operación con ordenación secundaria por fecha de creación
+      mappedItems = [...mappedItems].sort((a, b) => {
+        const refA = String(a.refApplicationOperNo || '').toLowerCase()
+        const refB = String(b.refApplicationOperNo || '').toLowerCase()
+        
+        // Primero ordenar por refApplicationOperNo
+        let comparison = refA.localeCompare(refB)
+        
+        // Si son iguales, ordenar por fecha de creación (más reciente primero)
+        if (comparison === 0) {
+          const dateA = a.dateTimeCreated ? new Date(a.dateTimeCreated).getTime() : 0
+          const dateB = b.dateTimeCreated ? new Date(b.dateTimeCreated).getTime() : 0
+          // Ordenación secundaria: más reciente primero (descendente)
+          comparison = dateB - dateA
+        }
+        
+        // Aplicar la dirección del sort principal
+        return sort.dir === 'asc' ? comparison : -comparison
+      })
+    } else if (sort.by === 'DateTimeCreated') {
+      // Ordenación por fecha de creación
+      mappedItems = [...mappedItems].sort((a, b) => {
+        const dateA = a.dateTimeCreated ? new Date(a.dateTimeCreated).getTime() : 0
+        const dateB = b.dateTimeCreated ? new Date(b.dateTimeCreated).getTime() : 0
+        const comparison = dateB - dateA // Descendente por defecto (más reciente primero)
+        return sort.dir === 'asc' ? -comparison : comparison
+      })
+    }
+    
+    multiclickRows.value = mappedItems
     
     // Actualizar total (usar data.total si está disponible, sino calcular)
     total.value = data?.total ?? data?.totalCount ?? multiclickRows.value.length
@@ -1590,8 +1635,9 @@ onMounted(async () => {
           <thead>
             <tr>
               <th @click="toggleSort('ContractNo')" :class="thClass('ContractNo')">Contrato</th>
+              <th @click="toggleSort('DocumentType')" :class="thClass('DocumentType')">Tipo</th>
               <th>CUPS</th>
-              <th>Nº. Solicitud Operación</th>
+              <th @click="toggleSort('RefApplicationOperNo')" :class="thClass('RefApplicationOperNo')">Nº. Solicitud Operación</th>
               <th @click="toggleSort('Rate')" :class="thClass('Rate')">Tarifa</th>
               <th class="text-center">Precio Referencia OMIP</th>
               <!-- <th>Fee</th> -->
@@ -1606,7 +1652,7 @@ onMounted(async () => {
             <template v-for="group in groupedRows" :key="group.contractNo">
               <!-- Fila de encabezado del grupo -->
               <tr class="group-header">
-                <td colspan="10" class="group-header-cell">
+                <td colspan="11" class="group-header-cell">
                   <div class="d-flex align-items-center justify-content-between">
                     <div>
                       <strong>Contrato: {{ group.contractNo }}</strong>
@@ -1646,6 +1692,14 @@ onMounted(async () => {
                   <small class="muted d-block font-size-small">
                     {{ r.contractNo }}
                   </small>
+                </td>
+                <td>
+                  <span class="pill" :class="{ 
+                    'pill-propuesta': isDocType(r, 'Propuesta'),
+                    'pill-contrato': isDocType(r, 'Contrato')
+                  }">
+                    {{ r.multiClickDocumentType === 'Propuesta' ? 'Propuesta' : r.multiClickDocumentType === 'Contrato' ? 'Contrato' : r.multiClickDocumentType || '—' }}
+                  </span>
                 </td>
                 <td class="mono">{{ r.cups }}</td>
                 <td class="mono">
@@ -1965,6 +2019,18 @@ onMounted(async () => {
 .pill-status {
   background: #eef2ff;
   border-color: #c7d2fe;
+}
+.pill-propuesta {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
+  font-weight: 600;
+}
+.pill-contrato {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+  color: #065f46;
+  font-weight: 600;
 }
 .empty {
   padding: 1rem;
