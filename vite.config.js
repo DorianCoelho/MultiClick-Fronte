@@ -8,8 +8,10 @@ export default defineConfig(({ mode }) => {
   
   // Determinar qué archivo de variables SCSS usar según el marketer
   const marketer = env.VITE_MARKETER || 'NAB'
-  const variablesFile = marketer.toUpperCase() === 'ACIS' 
+  const variablesFile = marketer.toUpperCase() === 'ACIS'
     ? '_variables-acis.scss' 
+    : marketer.toUpperCase() === 'SEK'
+    ? '_variables-sekuralia.scss'
     : '_variables-nab.scss'
   
   return {

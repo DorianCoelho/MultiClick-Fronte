@@ -1012,6 +1012,7 @@ function onRemove(key) { emit('remove', key) }
                         max="100"
                         v-model.number="coverage"
                         placeholder="Ej. 50"
+                        readonly
                         @input="coverage = Math.round($event.target.value) || ''"
                       />
                       <span class="input-group-text">%</span>
@@ -1059,6 +1060,7 @@ function onRemove(key) { emit('remove', key) }
                             :value="getCmmWithCoverage(period.key).toLocaleString('es-ES')"
                             readonly
                             style="min-width: 150px; background-color: #f8f9fa;"
+                            
                           />
                         </td>
                       </tr>
