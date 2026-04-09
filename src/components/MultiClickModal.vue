@@ -379,6 +379,17 @@ watch([startMonth, periodType], () => {
   endMonth.value = calculatedEndMonth.value
 })
 
+// Si cambia Trimestre/Semestre/Año, el mes elegido puede quedar fuera de las nuevas opciones:
+// alinearlo con el desplegable para que coincida con Fecha Inicio / Fin.
+watch(periodType, () => {
+  if (!props.show) return
+  const opts = startMonthOptions.value
+  if (!opts.length) return
+  if (!startMonth.value || !opts.some((o) => o.value === startMonth.value)) {
+    startMonth.value = opts[0].value
+  }
+}, { flush: 'post' })
+
 // Computed: calcular el precio promedio basado en mes inicio y duración
 const calculatedAveragePrice = computed(() => {
   if (!startMonth.value) {
@@ -795,7 +806,7 @@ function onSubmit() {
     fixedPriceOmip: basePrice,                               // Precio base + fee energy
     periodKeys: props.points.map(p => `${p.key}-01`),
     volumeMw: totalVolume.value,                              // Volumen total calculado
-    startMonth: startMonth.value ? `${startMonth.value}-01` : '',   // Fecha mes inicio (YYYY-MM-01)
+    startMonth: getStartDateFormatted() || '',                     // Misma fecha inicio que Fecha Inicio (YYYY-MM-DD, día 1)
     endMonth: endMonth.value,                                       // Mes final calculado (texto)
     feeEnergy: fee,                                                 // Fee energy del contrato
     coverage: coverageNum                                           // Coverage (porcentaje)

@@ -276,9 +276,9 @@ function downloadFromModal() {
 }
 
 async function openOperationPdfModal() {
-  const id = contractData.value?.multiclickDocumentNo
+  const id = contractData.value?.refApplicationOperNo
   if (!id) { 
-    error.value = 'No hay multiClickDocumentNo para este contrato.'
+    error.value = 'No hay ref. de operación para este contrato.'
     return 
   }
   
