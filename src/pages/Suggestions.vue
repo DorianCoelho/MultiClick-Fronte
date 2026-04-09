@@ -385,7 +385,7 @@ async function openPdfModal(row) {
   const id = getRowPdfId(row)
   if (!id) { showToast('No hay identificador de PDF para esta fila.', 'error'); return }
   
-  // Usar multiClickDocumentNo como clave única para esta fila específica
+  // Usar el identificador del documento como clave única para esta fila
   const key = id
   if (pdfLoadingRows.has(key)) return
 
@@ -420,7 +420,7 @@ function closePdf() {
 }
 async function downloadFromRow(row) {
   const id = getRowPdfId(row)
-  if (!id) { showToast('No hay multiClickDocumentNo para esta fila.', 'error'); return }
+  if (!id) { showToast('No hay identificador de PDF para esta fila.', 'error'); return }
   try {
     const base64 = await fetchPdfBase64ById(id)
     const url = base64ToBlobUrl(base64)
@@ -444,8 +444,8 @@ function downloadFromModal() {
 // downloadFromRow is unused, so it can be removed to avoid the warning
 
 async function openOperationPdfModal(row) {
-  const id = row?.multiClickDocumentNo
-  if (!id) { showToast('No hay multiClickDocumentNo para esta fila.', 'error'); return }
+  const id = row?.refApplicationOperNo
+  if (!id) { showToast('No hay ref. de operación para esta fila.', 'error'); return }
   
   pdfLoading.value = true
   pdfError.value = ''
