@@ -1037,8 +1037,8 @@ function onRemove(key) { emit('remove', key) }
                     <thead>
                       <tr>
                         <th>Periodos de duración de Click</th>
-                        <th>Consumo medio mensual (CMM) declarado en kWh</th>                      
-                        <th>CMM × Cobertura (kWh)</th>
+                        <th>CMM* (MWh)</th>                      
+                        <th>CMM* x % Volumen energía a contratar (MWh)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1090,6 +1090,7 @@ function onRemove(key) { emit('remove', key) }
                       </tr>
                     </tbody>
                   </table>
+                  <small class="text-muted">* CMM: consumo Medio Mensual según el histórico de tu punto de suministro</small>
                 </div>
               </div>
             </div>
