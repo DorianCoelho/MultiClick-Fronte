@@ -276,7 +276,7 @@ function downloadFromModal() {
 }
 
 async function openOperationPdfModal() {
-  const id = contractData.value?.refApplicationOperNo
+  const id = contractData.value?.multiclickDocumentNo
   if (!id) { 
     error.value = 'No hay ref. de operación para este contrato.'
     return 
