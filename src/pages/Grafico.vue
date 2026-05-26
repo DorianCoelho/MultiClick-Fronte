@@ -1453,7 +1453,7 @@ function downloadFromModal() {
 }
 
 async function openOperationPdfModal(row) {
-  const id = row?.refApplicationOperNo
+  const id = row?.multiClickDocumentNo
   if (!id) { showToast('No hay ref. de operación para esta fila.', 'error'); return }
   
   pdfLoading.value = true
