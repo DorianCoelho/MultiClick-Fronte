@@ -56,8 +56,30 @@ const documentNoDisplay = computed(() => {
 })
 
 // Helpers
+function isPlaceholderDate(dateLike) {
+  if (!dateLike) return false
+
+  // C# DateOnly style object
+  if (typeof dateLike === 'object' && dateLike.year && dateLike.month && dateLike.day) {
+    return Number(dateLike.year) === 1 && Number(dateLike.month) === 1 && Number(dateLike.day) === 1
+  }
+
+  if (typeof dateLike === 'string') {
+    const s = dateLike.trim()
+    // Common sentinel values
+    if (s.startsWith('0001-01-01') || s === '01/01/0001' || s === '1/1/1' || s === '01/01/0001 00:00:00') {
+      return true
+    }
+  }
+
+  const d = new Date(dateLike)
+  if (Number.isNaN(d.getTime())) return false
+  return d.getFullYear() === 1 && d.getMonth() === 0 && d.getDate() === 1
+}
+
 function fmtDate(dateLike) {
   if (!dateLike) return '—'
+  if (isPlaceholderDate(dateLike)) return '—'
   if (typeof dateLike === 'string') {
     const d = new Date(dateLike)
     return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('es-ES')
@@ -71,6 +93,7 @@ function fmtDate(dateLike) {
 
 function fmtDateTime(dateTimeLike) {
   if (!dateTimeLike) return '—'
+  if (isPlaceholderDate(dateTimeLike)) return '—'
   const d = new Date(dateTimeLike)
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('es-ES')
 }
@@ -446,15 +469,15 @@ onMounted(() => window.addEventListener('keydown', onKey))
                   <span class="info-label">Duración</span>
                   <strong class="info-value">{{ contractData.duration }}</strong>
                 </div>
-                <div class="info-item">
+                <div v-if="!isPlaceholderDate(contractData.startDate)" class="info-item">
                   <span class="info-label">Fecha Inicio</span>
                   <strong class="info-value">{{ fmtDate(contractData.startDate) }}</strong>
                 </div>
-                <div class="info-item">
+                <div v-if="!isPlaceholderDate(contractData.endDate)" class="info-item">
                   <span class="info-label">Fecha Fin</span>
                   <strong class="info-value">{{ fmtDate(contractData.endDate) }}</strong>
                 </div>
-                <div class="info-item">
+                <div v-if="!isPlaceholderDate(contractData.dateTimeCreated)" class="info-item">
                   <span class="info-label">Fecha Creación</span>
                   <strong class="info-value">{{ fmtDateTime(contractData.dateTimeCreated) }}</strong>
                 </div>
