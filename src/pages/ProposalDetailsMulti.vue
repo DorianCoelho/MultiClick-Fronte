@@ -9,10 +9,18 @@
                         <span class="pill" :class="`pill-${(p.productType || 'omip').toLowerCase()}`">{{ p.productType
                             ||
                             'Omip' }}</span>
-                        <span class="sep">•</span>
-                        <strong>Creación:</strong> {{ fmtDate(p.dateProposal) }}
-                        <span class="sep">•</span>
-                        <strong>Inicio:</strong> {{ fmtDate(p.startDate) }}
+                        <template v-if="dateProposalLabel || startDateLabel">
+                            <span class="sep">•</span>
+                            <template v-if="dateProposalLabel">
+                                <strong>Creación:</strong> {{ dateProposalLabel }}
+                            </template>
+                            <template v-if="dateProposalLabel && startDateLabel">
+                                <span class="sep">•</span>
+                            </template>
+                            <template v-if="startDateLabel">
+                                <strong>Inicio:</strong> {{ startDateLabel }}
+                            </template>
+                        </template>
                         <span class="sep">•</span>
                         <strong>Estado:</strong> <span class="pill pill-status">{{ p.status || '—' }}</span>
                     </div>
@@ -44,11 +52,8 @@
                         <div class="kv col-md-12 ms-3"><span>Propuesta</span><strong class="mono">{{ p.proposalNo
                         }}</strong>
                         </div>
-                        <div class="kv col-md-12 ms-3"><span>Creación</span><strong>{{ fmtDate(p.dateProposal)
-                        }}</strong>
-                        </div>
-                        <div class="kv col-md-12 ms-3"><span>Inicio</span><strong>{{ fmtDate(p.startDate) }}</strong>
-                        </div>
+                        <div v-if="dateProposalLabel" class="kv col-md-12 ms-3"><span>Creación</span><strong>{{ dateProposalLabel }}</strong></div>
+                        <div v-if="startDateLabel" class="kv col-md-12 ms-3"><span>Inicio</span><strong>{{ startDateLabel }}</strong></div>
                         <div class="kv col-md-12 ms-3"><span>Producto</span><strong>{{ p.productType || 'Omip'
                         }}</strong>
                         </div>
@@ -115,7 +120,7 @@
                                 <td>{{ p.marketerName || '—' }}</td>
                                 <td>{{ p.times || '—' }}</td>
                                 <td>{{ p.type || '—' }}</td>
-                                <td>{{ fmtDate(p.startDate) }}</td>
+                                <td>{{ startDateLabel || '—' }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -486,11 +491,30 @@ const normalize = (d = {}) => ({
 const p = computed(() => normalize(raw.value || {}))
 
 /* ---------------- Formateadores ---------------- */
-function fmtDate(x) { if (!x) return '—'; const d = new Date(x); return isNaN(d) ? '—' : d.toLocaleDateString('es-ES') }
+function isPlaceholderDate(x) {
+  if (!x) return false
+  if (typeof x === 'string') {
+    const s = x.trim()
+    if (s.startsWith('0001-01-01') || s === '01/01/0001' || s === '1/1/1' || s === '01/01/0001 00:00:00') return true
+  }
+  const d = new Date(x)
+  if (Number.isNaN(d.getTime())) return false
+  return d.getFullYear() === 1 && d.getMonth() === 0 && d.getDate() === 1
+}
+function fmtDate(x) { if (!x || isPlaceholderDate(x)) return '—'; const d = new Date(x); return isNaN(d) ? '—' : d.toLocaleDateString('es-ES') }
 function fmt2(n) { if (n == null) return '0'; const v = Number(n); return v > 0 ? v.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0' }
 function fmt6(n) { if (n == null) return '0.000000'; return Number(n).toFixed(6) }
 function fmt6z(n) { const v = Number(n || 0); return v > 0 ? fmt6(v) : '0' }
 function fmt2z(n) { const v = Number(n || 0); return v > 0 ? fmt2(v) : '0' }
+
+const dateProposalLabel = computed(() => {
+  const v = fmtDate(p.value.dateProposal)
+  return v === '—' ? '' : v
+})
+const startDateLabel = computed(() => {
+  const v = fmtDate(p.value.startDate)
+  return v === '—' ? '' : v
+})
 
 /* Para energía: solo filas con algún periodo > 0 (como tu Razor) */
 const energyYears = computed(() =>
